@@ -12,5 +12,6 @@ Axiom is an experimental kernel written in [Zig](https://ziglang.org).
 $ qemu-system-x86_64 \
     -bios /usr/share/OVMF/OVMF_CODE.fd \
     -nic none \
-    -hda fat:rw:disk-img
+    -drive format=raw,file.driver=vvfat,file.rw=on,file.dir=disk-img \
+    [-nographic | -serial stdio]
 ```
