@@ -9,20 +9,67 @@ pub fn main() usize {
     const con_out = uefi.system_table.con_out.?;
     _ = con_out.reset(false);
 
-    println("Hello, world!", .{});
+    println("Axiom OS", .{});
 
     const bs = uefi.system_table.boot_services.?;
 
-    getConfigurationTable();
     getMemoryMap(bs);
+    getConfigurationTable();
 
     halt();
 }
 
+// Root System Description Pointer
+pub const RSDP = extern struct {
+    signature: [8]u8,
+    checksum: u8,
+    oem_id: [6]u8,
+    revision: u8,
+    rsdt_address: u32,
+    length: u32,
+    xsdt_address: u64,
+    extended_checksum: u8,
+    reserved: [3]u8,
+};
+
+// Root System Description Table
+pub const TableDescriptionHeader = packed struct {
+    signature: [4]u8,
+    length: u32,
+    revision: u8,
+    checksum: u8,
+    oem_id: [6]u8,
+    oem_table_id: [8]u8,
+    oem_revision: u32,
+    creator_id: [4]u8,
+    creator_revision: u32,
+};
+
+// Extended System Description Table
+pub const XSDT = packed struct {
+    signature: [4]u8,
+    length: u32,
+    revision: u8,
+    checksum: u8,
+    oem_id: [6]u8,
+    oem_table_id: [8]u8,
+    oem_revision: u32,
+    creator_id: [4]u8,
+    creator_revision: u32,
+
+    pub fn entry(self: @This(), i: usize) *const TableDescriptionHeader {
+        const ptr_loc = @ptrToInt(&self) + 36 + (i * 8);
+        const u64_ptr = @intToPtr(*align(1) u64, ptr_loc);
+        const hdr_ptr = @intToPtr(*TableDescriptionHeader, u64_ptr.*);
+        return hdr_ptr;
+    }
+};
+
 fn getConfigurationTable() void {
     const st = uefi.system_table;
 
-    println("num_table_entries = {}", .{st.number_of_table_entries});
+    println("", .{});
+    println("UEFI Configuration Tables [{}]", .{st.number_of_table_entries});
 
     var i: usize = 0;
     while (i < st.number_of_table_entries) : (i += 1) {
@@ -48,24 +95,56 @@ fn getConfigurationTable() void {
             // dcfa911d-26eb-469F-A220-38b7dc461220: MemoryAttributesTable
             // d719b2cb-3d3a-4596-A3BC-dad00e67656f: ImageSecurityDatabase
 
-            "Unknown";
+            "";
 
-        println("config table @ [{X: >16}] {x:0>8}-{x:0>4}-{X:0>4}-{X:0>2}{X:0>2}-{s:0>12} {s}", .{
-            @ptrToInt(st.configuration_table[i].vendor_table),
-            guid.time_low,
-            guid.time_mid,
-            guid.time_high_and_version,
-            guid.clock_seq_high_and_reserved,
-            guid.clock_seq_low,
-            fmt.fmtSliceHexLower(guid.node[0..]),
-            name,
-        });
+        print("{:02} [{X: >16}]", .{i, @ptrToInt(st.configuration_table[i].vendor_table)});
+        if (std.mem.eql(u8, name, "")) {
+            print(" Unknown {{", .{});
+            printGuid(guid);
+            print("}}", .{});
+        }
+        println(" {s}", .{name});
 
         if (guid.eql(CT.acpi_20_table_guid)) {
-            const sig = @ptrCast([*]const u8, st.configuration_table[i].vendor_table);
-            println("RSDP Descriptor Signature: \"{s: <8}\"", .{sig[0..8]});
+            const rdsp = @ptrCast(*align(1) RSDP, st.configuration_table[i].vendor_table);
+            println("                      RSDP Descriptor:", .{});
+            println("                      - Signature:         \"{s}\"", .{rdsp.signature});
+            println("                      - Checksum:          {}", .{rdsp.checksum});
+            println("                      - OEM ID:            \"{s}\"", .{rdsp.oem_id});
+            println("                      - Revision:          {}", .{rdsp.revision});
+            println("                      - RSDT Address:      [{X: >16}]", .{rdsp.rsdt_address});
+            println("                      - Length:            {}", .{rdsp.length});
+            println("                      - XSDT Address:      [{X: >16}]", .{rdsp.xsdt_address});
+            println("                      - Extended Checksum: {}", .{rdsp.extended_checksum});
+            println("", .{});
+
+            const xdst = @intToPtr(*XSDT, rdsp.xsdt_address);
+            println("                      XSDT Descriptor:", .{});
+            printTableDescHeader(@ptrCast(*TableDescriptionHeader, xdst));
+
+            const n_entries = @divExact(xdst.length - 36, 8);
+            println("                      - Entries: [{}]", .{n_entries});
+
+            var j: usize = 0;
+            while (j < n_entries) : (j += 1) {
+                const entry = xdst.entry(j);
+                print("                        [{X: >16}]", .{@ptrToInt(entry)});
+                println(" \"{s}\"", .{entry.signature});
+            }
         }
     }
+}
+
+fn printTableDescHeader(hdr: *const TableDescriptionHeader) void {
+    println("                      - Signature:        \"{s}\"", .{hdr.signature});
+    println("                      - Length:           {}", .{hdr.length});
+    println("                      - Revision:         {}", .{hdr.revision});
+    println("                      - Checksum:         {}", .{hdr.checksum});
+    println("                      - OEM ID:           \"{s}\"", .{hdr.oem_id});
+    println("                      - OEM Table ID:     \"{s}\"", .{hdr.oem_table_id});
+    println("                      - OEM REvision:     {}", .{hdr.oem_revision});
+    println("                      - Creator ID:       \"{s}\"", .{hdr.creator_id});
+    println("                      - Creator Revision: 0x{x}", .{hdr.creator_revision});
 }
 
 fn getMemoryMap(bs: *uefi.tables.BootServices) void {
@@ -93,7 +172,9 @@ fn getMemoryMap(bs: *uefi.tables.BootServices) void {
     // println("descriptor_version = {}", .{descriptor_version});
 
     const n_descriptors = @divExact(memory_map_size, descriptor_size);
-    println("memory descriptor count = {}", .{n_descriptors});
+
+    println("", .{});
+    println("UEFI Memory Descriptors [{}]", .{n_descriptors});
 
     var i: usize = 0;
     var max_memory: usize = 0;
@@ -105,10 +186,14 @@ fn getMemoryMap(bs: *uefi.tables.BootServices) void {
         }
         // println("{:03}: [{X: >16}] [{: >8} KB] {s}", .{i, desc.physical_start, size_kb, @tagName(desc.type)});
     }
-    println("Total Memory: {s} ({})", .{fmt.fmtIntSizeBin(max_memory), max_memory});
+    println("  Total Memory: {s}", .{fmt.fmtIntSizeBin(max_memory)});
 }
 
 fn println(comptime format: [:0]const u8, args: anytype) void {
+    print(format ++ "\r\n", args);
+}
+
+fn print(comptime format: [:0]const u8, args: anytype) void {
     const con_out = uefi.system_table.con_out.?;
 
     var buf8: [256]u8 = undefined;
@@ -116,10 +201,29 @@ fn println(comptime format: [:0]const u8, args: anytype) void {
 
     var buf16: [256]u16 = undefined;
     const idx = std.unicode.utf8ToUtf16Le(buf16[0..], msg) catch unreachable;
-    buf16[idx + 0] = @as(u16, '\r');
-    buf16[idx + 1] = @as(u16, '\n');
-    buf16[idx + 2] = 0;
+    buf16[idx] = 0;
     _ = con_out.outputString(@ptrCast([*:0]const u16, buf16[0..]));
+}
+
+fn printGuid(guid: uefi.Guid) void {
+    print("{x:0>8}-{x:0>4}-{X:0>4}-{X:0>2}{X:0>2}-{s:0>12}", .{
+        guid.time_low,
+        guid.time_mid,
+        guid.time_high_and_version,
+        guid.clock_seq_high_and_reserved,
+        guid.clock_seq_low,
+        fmt.fmtSliceHexLower(guid.node[0..]),
+    });
+}
+
+fn dumpHex(bytes: [*]const u8, count: usize) void {
+    var k: usize = 0;
+    while (k < count) : (k += 1) {
+        if (k != 0 and @mod(k, 16) == 0) {
+            println("", .{});
+        }
+        print("{X:0>2} ", .{bytes[k]});
+    }
 }
 
 fn halt() noreturn {
