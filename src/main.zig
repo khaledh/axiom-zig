@@ -33,7 +33,7 @@ pub const RSDP = extern struct {
 };
 
 // Root System Description Table
-pub const TableDescriptionHeader = packed struct {
+pub const TableDescriptionHeader = extern struct {
     signature: [4]u8,
     length: u32,
     revision: u8,
@@ -46,16 +46,8 @@ pub const TableDescriptionHeader = packed struct {
 };
 
 // Extended System Description Table
-pub const XSDT = packed struct {
-    signature: [4]u8,
-    length: u32,
-    revision: u8,
-    checksum: u8,
-    oem_id: [6]u8,
-    oem_table_id: [8]u8,
-    oem_revision: u32,
-    creator_id: [4]u8,
-    creator_revision: u32,
+pub const XSDT = extern struct {
+    hdr: TableDescriptionHeader,
 
     pub fn entry(self: @This(), i: usize) *const TableDescriptionHeader {
         const ptr_loc = @ptrToInt(&self) + 36 + (i * 8);
@@ -63,6 +55,15 @@ pub const XSDT = packed struct {
         const hdr_ptr = @intToPtr(*TableDescriptionHeader, u64_ptr.*);
         return hdr_ptr;
     }
+};
+
+// Fixed ACPI Description Table
+pub const FADT = extern struct {
+    hdr: TableDescriptionHeader,
+    firmware_ctrl: u32,
+    dsdt: u32,
+    reserved: u8,
+    preferred_pm_profile: u8,
 };
 
 fn getConfigurationTable() void {
@@ -105,7 +106,12 @@ fn getConfigurationTable() void {
         }
         println(" {s}", .{name});
 
+        // ACPI 2.0
+
         if (guid.eql(CT.acpi_20_table_guid)) {
+
+            // RSDP
+
             const rdsp = @ptrCast(*align(1) RSDP, st.configuration_table[i].vendor_table);
             println("                      RSDP Descriptor:", .{});
             println("                      - Signature:         \"{s}\"", .{rdsp.signature});
@@ -118,11 +124,13 @@ fn getConfigurationTable() void {
             println("                      - Extended Checksum: {}", .{rdsp.extended_checksum});
             println("", .{});
 
+            // XDST
+
             const xdst = @intToPtr(*XSDT, rdsp.xsdt_address);
             println("                      XSDT Descriptor:", .{});
-            printTableDescHeader(@ptrCast(*TableDescriptionHeader, xdst));
+            printTableDescHeader(@ptrCast(*TableDescriptionHeader, &xdst.hdr));
 
-            const n_entries = @divExact(xdst.length - 36, 8);
+            const n_entries: usize = @divExact(xdst.hdr.length - @bitSizeOf(TableDescriptionHeader) / 8, 8);
             println("                      - Entries: [{}]", .{n_entries});
 
             var j: usize = 0;
@@ -130,6 +138,16 @@ fn getConfigurationTable() void {
                 const entry = xdst.entry(j);
                 print("                        [{X: >16}]", .{@ptrToInt(entry)});
                 println(" \"{s}\"", .{entry.signature});
+
+                // FADT
+
+                if (std.mem.eql(u8, entry.signature[0..], "FACP")) {
+                    const fadt = @ptrCast(*const FADT, entry);
+                    printTableDescHeader(@ptrCast(*const TableDescriptionHeader, &fadt.hdr));
+                    println("                      - Firmware Ctrl:        0x{x}", .{fadt.firmware_ctrl});
+                    println("                      - DSDT:                 0x{x}", .{fadt.dsdt});
+                    println("                      - Preferred PM Profile: {}", .{fadt.preferred_pm_profile});
+                }
             }
         }
     }
