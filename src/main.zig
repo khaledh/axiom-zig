@@ -17,7 +17,9 @@ pub fn main() usize {
     getMemoryMap(bs);
     getConfigurationTable();
 
-    halt();
+    shutdown_qemu();
+
+    // halt();
 }
 
 fn getConfigurationTable() void {
@@ -72,10 +74,11 @@ fn getConfigurationTable() void {
     if (rdsp != undefined) {
 
         println("", .{});
-        println("=== ACPI 2.0 Tables ===", .{});
+        println("### ACPI 2.0 Tables ###", .{});
 
         println("", .{});
-        println("  === RSDP ===", .{});
+        println("  ### RSDP (Root System Description Pointer) ###", .{});
+        println("", .{});
         println("  - Signature:         \"{s}\"", .{rdsp.signature});
         println("  - Checksum:          {}", .{rdsp.checksum});
         println("  - OEM ID:            \"{s}\"", .{rdsp.oem_id});
@@ -88,7 +91,8 @@ fn getConfigurationTable() void {
         const xdst = @intToPtr(*acpi.XSDT, rdsp.xsdt_address);
 
         println("", .{});
-        println("  === XDST ===", .{});
+        println("  ### XDST (eXtended System Description Table) ###", .{});
+        println("", .{});
 
         printTableDescHeader(@ptrCast(*acpi.TableDescriptionHeader, &xdst.hdr));
 
@@ -117,7 +121,8 @@ fn getConfigurationTable() void {
         }
 
         println("", .{});
-        println("  === FADT ===", .{});
+        println("  ### FADT (Fixed ACPI Description Table) ###", .{});
+        println("", .{});
 
         printTableDescHeader(@ptrCast(*const acpi.TableDescriptionHeader, &fadt.hdr));
         println("  - FIRMWARE_CTRL (FACS): 0x{x: >8}", .{fadt.firmware_ctrl});
@@ -160,7 +165,8 @@ fn getConfigurationTable() void {
         // println("  - RESET_VALUE:          {}", .{fadt.reset_value});
 
         println("", .{});
-        println("  === FACS ===", .{});
+        println("  ### FACS (Firmware ACPI Control Structure) ###", .{});
+        println("", .{});
 
         const facs = @ptrCast(*align(1) const acpi.FACS, @intToPtr([*]const u8, fadt.firmware_ctrl & 0x00000000ffffffff));
         println("  | Signature:          \"{s}\"", .{facs.signature});
@@ -174,13 +180,16 @@ fn getConfigurationTable() void {
         println("  - OSPM Flags:         0x{x:0>8}", .{facs.ospm_flags});
 
         println("", .{});
-        println("  === DSDT ===", .{});
+        println("  ### DSDT (Differentiated System Description Table) ###", .{});
+        println("", .{});
 
         const dsdt = @ptrCast(*const acpi.TableDescriptionHeader, @intToPtr([*]align(4) const u8, fadt.dsdt & 0x00000000ffffffff));
         printTableDescHeader(@ptrCast(*const acpi.TableDescriptionHeader, dsdt));
+        println("  - Definition Block: {} bytes (AML encoded)", .{dsdt.length - 36});
 
         println("", .{});
-        println("  === MADT ===", .{});
+        println("  ### MADT (Multiple APIC Description Table) ###", .{});
+        println("", .{});
 
         printTableDescHeader(@ptrCast(*const acpi.TableDescriptionHeader, &madt.hdr));
         println("  - Local APIC Address:  0x{x:0>8}", .{madt.local_apic_addr});
@@ -237,7 +246,8 @@ fn getConfigurationTable() void {
         }
 
         println("", .{});
-        println("  === BGRT ===", .{});
+        println("  ### BGRT (Boot Graphics Resource Table) ###", .{});
+        println("", .{});
 
         printTableDescHeader(@ptrCast(*const acpi.TableDescriptionHeader, &bgrt.hdr));
         println("  - Version:        {}", .{bgrt.version});
@@ -376,4 +386,20 @@ fn halt() noreturn {
             "hlt"
         );
     }
+}
+
+fn shutdown_qemu() noreturn {
+    println("Shutting down", .{});
+    out16(0xB004, 0x2000);
+    unreachable;
+}
+
+fn out16(port: u16, value: u16) void {
+    asm volatile (
+        "out %[value], %[port]"
+        :
+        : [port] "{dx}" (port),
+          [value] "{ax}" (value)
+        : "dx", "ax"
+    );
 }
