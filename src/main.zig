@@ -4,6 +4,7 @@ const uefi = std.os.uefi;
 const MemoryDescriptor = uefi.tables.MemoryDescriptor;
 const MemoryType = uefi.tables.MemoryType;
 const W = std.unicode.utf8ToUtf16LeStringLiteral;
+const acpi = @import("acpi/acpi.zig");
 
 pub fn main() usize {
     const con_out = uefi.system_table.con_out.?;
@@ -19,58 +20,13 @@ pub fn main() usize {
     halt();
 }
 
-// Root System Description Pointer
-pub const RSDP = extern struct {
-    signature: [8]u8,
-    checksum: u8,
-    oem_id: [6]u8,
-    revision: u8,
-    rsdt_address: u32,
-    length: u32,
-    xsdt_address: u64,
-    extended_checksum: u8,
-    reserved: [3]u8,
-};
-
-// Root System Description Table
-pub const TableDescriptionHeader = extern struct {
-    signature: [4]u8,
-    length: u32,
-    revision: u8,
-    checksum: u8,
-    oem_id: [6]u8,
-    oem_table_id: [8]u8,
-    oem_revision: u32,
-    creator_id: [4]u8,
-    creator_revision: u32,
-};
-
-// Extended System Description Table
-pub const XSDT = extern struct {
-    hdr: TableDescriptionHeader,
-
-    pub fn entry(self: @This(), i: usize) *const TableDescriptionHeader {
-        const ptr_loc = @ptrToInt(&self) + 36 + (i * 8);
-        const u64_ptr = @intToPtr(*align(1) u64, ptr_loc);
-        const hdr_ptr = @intToPtr(*TableDescriptionHeader, u64_ptr.*);
-        return hdr_ptr;
-    }
-};
-
-// Fixed ACPI Description Table
-pub const FADT = extern struct {
-    hdr: TableDescriptionHeader,
-    firmware_ctrl: u32,
-    dsdt: u32,
-    reserved: u8,
-    preferred_pm_profile: u8,
-};
-
 fn getConfigurationTable() void {
     const st = uefi.system_table;
 
     println("", .{});
     println("UEFI Configuration Tables [{}]", .{st.number_of_table_entries});
+
+    var rdsp: *align(1) acpi.RSDP = undefined;
 
     var i: usize = 0;
     while (i < st.number_of_table_entries) : (i += 1) {
@@ -106,63 +62,233 @@ fn getConfigurationTable() void {
         }
         println(" {s}", .{name});
 
-        // ACPI 2.0
-
         if (guid.eql(CT.acpi_20_table_guid)) {
+            rdsp = @ptrCast(*align(1) acpi.RSDP, st.configuration_table[i].vendor_table);
+        }
+    }
 
-            // RSDP
+    // ACPI 2.0
 
-            const rdsp = @ptrCast(*align(1) RSDP, st.configuration_table[i].vendor_table);
-            println("                      RSDP Descriptor:", .{});
-            println("                      - Signature:         \"{s}\"", .{rdsp.signature});
-            println("                      - Checksum:          {}", .{rdsp.checksum});
-            println("                      - OEM ID:            \"{s}\"", .{rdsp.oem_id});
-            println("                      - Revision:          {}", .{rdsp.revision});
-            println("                      - RSDT Address:      [{X: >16}]", .{rdsp.rsdt_address});
-            println("                      - Length:            {}", .{rdsp.length});
-            println("                      - XSDT Address:      [{X: >16}]", .{rdsp.xsdt_address});
-            println("                      - Extended Checksum: {}", .{rdsp.extended_checksum});
-            println("", .{});
+    if (rdsp != undefined) {
 
-            // XDST
+        println("", .{});
+        println("=== ACPI 2.0 Tables ===", .{});
 
-            const xdst = @intToPtr(*XSDT, rdsp.xsdt_address);
-            println("                      XSDT Descriptor:", .{});
-            printTableDescHeader(@ptrCast(*TableDescriptionHeader, &xdst.hdr));
+        println("", .{});
+        println("  === RSDP ===", .{});
+        println("  - Signature:         \"{s}\"", .{rdsp.signature});
+        println("  - Checksum:          {}", .{rdsp.checksum});
+        println("  - OEM ID:            \"{s}\"", .{rdsp.oem_id});
+        println("  - Revision:          {}", .{rdsp.revision});
+        println("  - RSDT Address:      [{X: >16}]", .{rdsp.rsdt_address});
+        println("  - Length:            {}", .{rdsp.length});
+        println("  - XSDT Address:      [{X: >16}]", .{rdsp.xsdt_address});
+        println("  - Extended Checksum: {}", .{rdsp.extended_checksum});
 
-            const n_entries: usize = @divExact(xdst.hdr.length - @bitSizeOf(TableDescriptionHeader) / 8, 8);
-            println("                      - Entries: [{}]", .{n_entries});
+        const xdst = @intToPtr(*acpi.XSDT, rdsp.xsdt_address);
 
-            var j: usize = 0;
-            while (j < n_entries) : (j += 1) {
-                const entry = xdst.entry(j);
-                print("                        [{X: >16}]", .{@ptrToInt(entry)});
-                println(" \"{s}\"", .{entry.signature});
+        println("", .{});
+        println("  === XDST ===", .{});
 
-                // FADT
+        printTableDescHeader(@ptrCast(*acpi.TableDescriptionHeader, &xdst.hdr));
 
-                if (std.mem.eql(u8, entry.signature[0..], "FACP")) {
-                    const fadt = @ptrCast(*const FADT, entry);
-                    printTableDescHeader(@ptrCast(*const TableDescriptionHeader, &fadt.hdr));
-                    println("                      - Firmware Ctrl:        0x{x}", .{fadt.firmware_ctrl});
-                    println("                      - DSDT:                 0x{x}", .{fadt.dsdt});
-                    println("                      - Preferred PM Profile: {}", .{fadt.preferred_pm_profile});
-                }
+        const n_entries: usize = @divExact(xdst.hdr.length - @bitSizeOf(acpi.TableDescriptionHeader) / 8, 8);
+        println("  - Entries: [{}]", .{n_entries});
+
+        var j: usize = 0;
+        var fadt: *align(1) const acpi.FADT = undefined;
+        var madt: *align(1) const acpi.MADT = undefined;
+        var bgrt: *align(1) const acpi.BGRT = undefined;
+
+        while (j < n_entries) : (j += 1) {
+            const entry = xdst.entry(j);
+            print("    [{X: >16}]", .{@ptrToInt(entry)});
+            println(" \"{s}\"", .{entry.signature});
+
+            if (std.mem.eql(u8, entry.signature[0..], "FACP")) {
+                fadt = @ptrCast(*align(1) const acpi.FADT, entry);
+            }
+            else if (std.mem.eql(u8, entry.signature[0..], "APIC")) {
+                madt = @ptrCast(*align(1) const acpi.MADT, entry);
+            }
+            else if (std.mem.eql(u8, entry.signature[0..], "BGRT")) {
+                bgrt = @ptrCast(*align(1) const acpi.BGRT, entry);
             }
         }
+
+        println("", .{});
+        println("  === FADT ===", .{});
+
+        printTableDescHeader(@ptrCast(*const acpi.TableDescriptionHeader, &fadt.hdr));
+        println("  - FIRMWARE_CTRL (FACS): 0x{x: >8}", .{fadt.firmware_ctrl});
+        println("  - DSDT:                 0x{x: >8}", .{fadt.dsdt});
+        println("  - Preferred PM Profile: {}", .{fadt.preferred_pm_profile});
+        println("  - SCI_INT:              {}", .{fadt.sci_int});
+        println("  - SMI_CMD:              0x{x}", .{fadt.smi_cmd});
+        println("  - ACPI_ENABLE:          0x{x}", .{fadt.acpi_enable});
+        println("  - ACPI_DISABLE:         0x{x}", .{fadt.acpi_disable});
+        println("  - S4BIOS_REQ:           0x{x:0>2}", .{fadt.s4bios_req});
+        println("  - PSTATE_CNT:           0x{x:0>2}", .{fadt.pstate_cnt});
+        println("  - PM1a_EVT_BLK:         0x{x: >8}", .{fadt.pm1a_evt_blk});
+        println("  - PM1b_EVT_BLK:         0x{x: >8}", .{fadt.pm1b_evt_blk});
+        println("  - PM1a_CNT_BLK:         0x{x: >8}", .{fadt.pm1a_cnt_blk});
+        println("  - PM1b_CNT_BLK:         0x{x: >8}", .{fadt.pm1b_cnt_blk});
+        println("  - PM2_CNT_BLK:          0x{x: >8}", .{fadt.pm2_cnt_blk});
+        println("  - PM_TMR_BLK:           0x{x: >8}", .{fadt.pm_tmr_blk});
+        println("  - GPE0_BLK:             0x{x: >8}", .{fadt.gpe0_blk});
+        println("  - GPE1_BLK:             0x{x: >8}", .{fadt.gpe1_blk});
+        println("  - PM1_EVT_LEN:          {}", .{fadt.pm1_evt_len});
+        println("  - PM1_CNT_LEN:          {}", .{fadt.pm1_cnt_len});
+        println("  - PM2_CNT_LEN:          {}", .{fadt.pm2_cnt_len});
+        println("  - PM_TMR_LEN:           {}", .{fadt.pm_tmr_len});
+        println("  - GPE0_BLK_LEN:         {}", .{fadt.gpe0_blk_len});
+        println("  - GPE1_BLK_LEN:         {}", .{fadt.gpe1_blk_len});
+        println("  - GPE1_BASE:            {}", .{fadt.gpe1_base});
+        println("  - CST_CNT:              0x{x}", .{fadt.cst_cnt});
+        println("  - P_LVL2_LAT:           0x{x:0>4}", .{fadt.p_lvl2_lat});
+        println("  - P_LVL3_LAT:           0x{x:0>4}", .{fadt.p_lvl3_lat});
+        println("  - FLUSH_SIZE:           {}", .{fadt.flush_size});
+        println("  - FLUSH_STRIDE:         {}", .{fadt.flush_stride});
+        println("  - DUTY_OFFSET:          {}", .{fadt.duty_offset});
+        println("  - DUTY_WIDTH:           {}", .{fadt.duty_width});
+        println("  - DAY_ALRM:             {}", .{fadt.day_alarm});
+        println("  - MON_ALRM:             {}", .{fadt.mon_alarm});
+        println("  - CENTURY:              {}", .{fadt.century});
+        println("  - IAPC_BOOT_ARCH:       0b{b: >16}", .{fadt.iapc_boot_arch});
+        println("  - Flags:                0b{b: >32}", .{fadt.flags});
+        // println("  - RESET_REG:            {s}", .{formatGenericAddress(fadt.reset_reg)});
+        // println("  - RESET_VALUE:          {}", .{fadt.reset_value});
+
+        println("", .{});
+        println("  === FACS ===", .{});
+
+        const facs = @ptrCast(*align(1) const acpi.FACS, @intToPtr([*]const u8, fadt.firmware_ctrl & 0x00000000ffffffff));
+        println("  | Signature:          \"{s}\"", .{facs.signature});
+        println("  | Length:             {}", .{facs.length});
+        println("  - HW Signature:       0x{x:0>8}", .{facs.hw_signature});
+        println("  - FW Waking Vector:   0x{x:0>8}", .{facs.fw_walking_vector});
+        println("  - Global Lock:        0x{x:0>8}", .{facs.global_lock});
+        println("  - Flags:              0x{x:0>8}", .{facs.flags});
+        println("  - X FW Waking Vector: 0x{x:0>16}", .{facs.x_fw_walking_vector});
+        println("  - Version:            {}", .{facs.version});
+        println("  - OSPM Flags:         0x{x:0>8}", .{facs.ospm_flags});
+
+        println("", .{});
+        println("  === DSDT ===", .{});
+
+        const dsdt = @ptrCast(*const acpi.TableDescriptionHeader, @intToPtr([*]align(4) const u8, fadt.dsdt & 0x00000000ffffffff));
+        printTableDescHeader(@ptrCast(*const acpi.TableDescriptionHeader, dsdt));
+
+        println("", .{});
+        println("  === MADT ===", .{});
+
+        printTableDescHeader(@ptrCast(*const acpi.TableDescriptionHeader, &madt.hdr));
+        println("  - Local APIC Address:  0x{x:0>8}", .{madt.local_apic_addr});
+        println("  - Flags:               0x{x:0>8}", .{madt.flags});
+        // var p: usize = @ptrToInt(madt) + 36 + 8;
+        var int_ctrl = @intToPtr(*const acpi.InterruptControllerHdr, (@ptrToInt(madt) + 36 + 8));
+        while (@ptrToInt(int_ctrl) - @ptrToInt(madt) < madt.hdr.length) {
+            println("  - Interrupt Ctrl Type: {}", .{int_ctrl.type});
+            println("  - Interrupt Ctrl Len:  {}", .{int_ctrl.len});
+            switch (int_ctrl.type) {
+                0 => {
+                    const lapic = @ptrCast(*align(1) const acpi.LAPIC, int_ctrl);
+                    println("    [Local APIC]", .{});
+                    println("      - ACPI Processor UID: {}", .{lapic.processor_uid});
+                    println("      - LAPIC ID:           {}", .{lapic.lapic_id});
+                    println("      - Flags:              0x{x:0>8}", .{lapic.flags});
+                },
+                1 => {
+                    const ioapic = @ptrCast(*align(1) const acpi.IOAPIC, int_ctrl);
+                    println("    [I/O APIC]", .{});
+                    println("      - IOAPIC ID:          {}", .{ioapic.ioapic_id});
+                    println("      - Address:            0x{x: >8}", .{ioapic.ioapic_addr});
+                    println("      - GSI Base:           {}", .{ioapic.gsi_base});
+
+                    const ioregsel = @intToPtr(*u32, ioapic.ioapic_addr);
+                    const iowin = @intToPtr(*u32, ioapic.ioapic_addr + 0x10);
+
+                    ioregsel.* = 0;
+                    println("      - IOAPICID:           0x{x:0>8}", .{iowin.*});
+                    ioregsel.* = 1;
+                    println("      - IOAPICVER:          0x{x:0>8}", .{iowin.*});
+                    ioregsel.* = 2;
+                    println("      - IOAPICARB:          0x{x:0>8}", .{iowin.*});
+
+                },
+                2 => {
+                    const int_src_override = @ptrCast(*align(1) const acpi.InterruptSourceOverride, int_ctrl);
+                    println("    [Interrupt Source Override]", .{});
+                    println("      - Bus:                {}", .{int_src_override.bus});
+                    println("      - Source:             {}", .{int_src_override.source});
+                    println("      - GSI:                {}", .{int_src_override.gsi});
+                    println("      - Flags:              0b{b:0>4}", .{int_src_override.flags});
+                },
+                4 => {
+                    const lapic = @ptrCast(*align(1) const acpi.LAPIC_NMI, int_ctrl);
+                    println("    [Local APIC NMI]", .{});
+                    println("      - ACPI Processor UID: 0x{x: >2}", .{lapic.processor_uid});
+                    println("      - Flags:              0x{x:0>4}", .{lapic.flags});
+                    println("      - LINT#:              {}", .{lapic.lapic_lint_n});
+                },
+                else => {},
+            }
+            int_ctrl = @intToPtr(*const acpi.InterruptControllerHdr, @ptrToInt(int_ctrl) + int_ctrl.len);
+        }
+
+        println("", .{});
+        println("  === BGRT ===", .{});
+
+        printTableDescHeader(@ptrCast(*const acpi.TableDescriptionHeader, &bgrt.hdr));
+        println("  - Version:        {}", .{bgrt.version});
+        println("  - Status:         0x{x:0>8}", .{bgrt.status});
+        println("  - Image Type:     {}", .{bgrt.image_type});
+        println("  - Image Address:  0x{x: >16}", .{bgrt.image_addr});
+        println("  - Image Offset X: {}", .{bgrt.image_offset_x});
+        println("  - Image Offset Y: {}", .{bgrt.image_offset_y});
+
+        println("", .{});
+        // dumpHex(@intToPtr([*]const u8, (fadt.dsdt + 36)), (dsdt.length - 36));
+        // dumpHex(@intToPtr([*]const u8, (@ptrToInt(madt) + 36 + 8)), 76);
     }
 }
 
-fn printTableDescHeader(hdr: *const TableDescriptionHeader) void {
-    println("                      - Signature:        \"{s}\"", .{hdr.signature});
-    println("                      - Length:           {}", .{hdr.length});
-    println("                      - Revision:         {}", .{hdr.revision});
-    println("                      - Checksum:         {}", .{hdr.checksum});
-    println("                      - OEM ID:           \"{s}\"", .{hdr.oem_id});
-    println("                      - OEM Table ID:     \"{s}\"", .{hdr.oem_table_id});
-    println("                      - OEM REvision:     {}", .{hdr.oem_revision});
-    println("                      - Creator ID:       \"{s}\"", .{hdr.creator_id});
-    println("                      - Creator Revision: 0x{x}", .{hdr.creator_revision});
+fn printTableDescHeader(hdr: *const acpi.TableDescriptionHeader) void {
+    println("  | Signature:        \"{s}\"", .{hdr.signature});
+    println("  | Length:           {}", .{hdr.length});
+    println("  | Revision:         {}", .{hdr.revision});
+    println("  | Checksum:         {}", .{hdr.checksum});
+    println("  | OEM ID:           \"{s}\"", .{hdr.oem_id});
+    println("  | OEM Table ID:     \"{s}\"", .{hdr.oem_table_id});
+    println("  | OEM REvision:     {}", .{hdr.oem_revision});
+    println("  | Creator ID:       \"{s}\"", .{hdr.creator_id});
+    println("  | Creator Revision: 0x{x}", .{hdr.creator_revision});
+}
+
+fn formatGenericAddressImpl() type {
+    return struct {
+        pub fn f(
+            gen_addr: acpi.GenericAddress,
+            comptime _format: []const u8,
+            _options: fmt.FormatOptions,
+            writer: anytype,
+        ) !void {
+            _ = _format;
+            _ = _options;
+
+            try fmt.format(writer, "[{}] 0x{x: >16} [offset: {}, width: {}, access_size: {}]", .{
+                gen_addr.addr_space_id,
+                gen_addr.address,
+                gen_addr.reg_bit_offset,
+                gen_addr.reg_bit_width,
+                gen_addr.access_size,
+            });
+       }
+    };
+}
+
+fn formatGenericAddress(gen_addr: acpi.GenericAddress) std.fmt.Formatter(formatGenericAddressImpl().f) {
+    return .{ .data = gen_addr };
 }
 
 fn getMemoryMap(bs: *uefi.tables.BootServices) void {
