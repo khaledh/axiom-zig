@@ -4,7 +4,15 @@ const uefi = std.os.uefi;
 const MemoryDescriptor = uefi.tables.MemoryDescriptor;
 const MemoryType = uefi.tables.MemoryType;
 const W = std.unicode.utf8ToUtf16LeStringLiteral;
+
 const acpi = @import("acpi/acpi.zig");
+const io = @import("io.zig");
+const print = io.print;
+const println = io.println;
+const printGuid = io.printGuid;
+const dumpHex = io.dumpHex;
+const aml = @import("acpi/aml.zig");
+
 
 pub fn main() usize {
     const con_out = uefi.system_table.con_out.?;
@@ -17,15 +25,13 @@ pub fn main() usize {
     getMemoryMap(bs);
     getConfigurationTable();
 
-    shutdown_qemu();
-
+    shutdown();
     // halt();
 }
 
 fn getConfigurationTable() void {
     const st = uefi.system_table;
 
-    println("", .{});
     println("UEFI Configuration Tables [{}]", .{st.number_of_table_entries});
 
     var rdsp: *align(1) acpi.RSDP = undefined;
@@ -185,80 +191,85 @@ fn getConfigurationTable() void {
 
         const dsdt = @ptrCast(*const acpi.TableDescriptionHeader, @intToPtr([*]align(4) const u8, fadt.dsdt & 0x00000000ffffffff));
         printTableDescHeader(@ptrCast(*const acpi.TableDescriptionHeader, dsdt));
-        println("  - Definition Block: {} bytes (AML encoded)", .{dsdt.length - 36});
+        const aml_block_len = dsdt.length - 36;
+        println("  - Definition Block: {} bytes (AML encoded)", .{aml_block_len});
 
-        println("", .{});
-        println("  ### MADT (Multiple APIC Description Table) ###", .{});
-        println("", .{});
+        const aml_block = @intToPtr([*]const u8, @ptrToInt(dsdt) + 36);
+        _ = aml.parse(aml_block[0..aml_block_len]);
 
-        printTableDescHeader(@ptrCast(*const acpi.TableDescriptionHeader, &madt.hdr));
-        println("  - Local APIC Address:  0x{x:0>8}", .{madt.local_apic_addr});
-        println("  - Flags:               0x{x:0>8}", .{madt.flags});
-        // var p: usize = @ptrToInt(madt) + 36 + 8;
-        var int_ctrl = @intToPtr(*const acpi.InterruptControllerHdr, (@ptrToInt(madt) + 36 + 8));
-        while (@ptrToInt(int_ctrl) - @ptrToInt(madt) < madt.hdr.length) {
-            println("  - Interrupt Ctrl Type: {}", .{int_ctrl.type});
-            println("  - Interrupt Ctrl Len:  {}", .{int_ctrl.len});
-            switch (int_ctrl.type) {
-                0 => {
-                    const lapic = @ptrCast(*align(1) const acpi.LAPIC, int_ctrl);
-                    println("    [Local APIC]", .{});
-                    println("      - ACPI Processor UID: {}", .{lapic.processor_uid});
-                    println("      - LAPIC ID:           {}", .{lapic.lapic_id});
-                    println("      - Flags:              0x{x:0>8}", .{lapic.flags});
-                },
-                1 => {
-                    const ioapic = @ptrCast(*align(1) const acpi.IOAPIC, int_ctrl);
-                    println("    [I/O APIC]", .{});
-                    println("      - IOAPIC ID:          {}", .{ioapic.ioapic_id});
-                    println("      - Address:            0x{x: >8}", .{ioapic.ioapic_addr});
-                    println("      - GSI Base:           {}", .{ioapic.gsi_base});
+        // println("", .{});
+        // println("  ### MADT (Multiple APIC Description Table) ###", .{});
+        // println("", .{});
 
-                    const ioregsel = @intToPtr(*u32, ioapic.ioapic_addr);
-                    const iowin = @intToPtr(*u32, ioapic.ioapic_addr + 0x10);
+        // printTableDescHeader(@ptrCast(*const acpi.TableDescriptionHeader, &madt.hdr));
+        // println("  - Local APIC Address:  0x{x:0>8}", .{madt.local_apic_addr});
+        // println("  - Flags:               0x{x:0>8}", .{madt.flags});
+        // // var p: usize = @ptrToInt(madt) + 36 + 8;
+        // var int_ctrl = @intToPtr(*const acpi.InterruptControllerHdr, (@ptrToInt(madt) + 36 + 8));
+        // while (@ptrToInt(int_ctrl) - @ptrToInt(madt) < madt.hdr.length) {
+        //     println("  - Interrupt Ctrl Type: {}", .{int_ctrl.type});
+        //     println("  - Interrupt Ctrl Len:  {}", .{int_ctrl.len});
+        //     switch (int_ctrl.type) {
+        //         0 => {
+        //             const lapic = @ptrCast(*align(1) const acpi.LAPIC, int_ctrl);
+        //             println("    [Local APIC]", .{});
+        //             println("      - ACPI Processor UID: {}", .{lapic.processor_uid});
+        //             println("      - LAPIC ID:           {}", .{lapic.lapic_id});
+        //             println("      - Flags:              0x{x:0>8}", .{lapic.flags});
+        //         },
+        //         1 => {
+        //             const ioapic = @ptrCast(*align(1) const acpi.IOAPIC, int_ctrl);
+        //             println("    [I/O APIC]", .{});
+        //             println("      - IOAPIC ID:          {}", .{ioapic.ioapic_id});
+        //             println("      - Address:            0x{x: >8}", .{ioapic.ioapic_addr});
+        //             println("      - GSI Base:           {}", .{ioapic.gsi_base});
 
-                    ioregsel.* = 0;
-                    println("      - IOAPICID:           0x{x:0>8}", .{iowin.*});
-                    ioregsel.* = 1;
-                    println("      - IOAPICVER:          0x{x:0>8}", .{iowin.*});
-                    ioregsel.* = 2;
-                    println("      - IOAPICARB:          0x{x:0>8}", .{iowin.*});
+        //             const ioregsel = @intToPtr(*u32, ioapic.ioapic_addr);
+        //             const iowin = @intToPtr(*u32, ioapic.ioapic_addr + 0x10);
 
-                },
-                2 => {
-                    const int_src_override = @ptrCast(*align(1) const acpi.InterruptSourceOverride, int_ctrl);
-                    println("    [Interrupt Source Override]", .{});
-                    println("      - Bus:                {}", .{int_src_override.bus});
-                    println("      - Source:             {}", .{int_src_override.source});
-                    println("      - GSI:                {}", .{int_src_override.gsi});
-                    println("      - Flags:              0b{b:0>4}", .{int_src_override.flags});
-                },
-                4 => {
-                    const lapic = @ptrCast(*align(1) const acpi.LAPIC_NMI, int_ctrl);
-                    println("    [Local APIC NMI]", .{});
-                    println("      - ACPI Processor UID: 0x{x: >2}", .{lapic.processor_uid});
-                    println("      - Flags:              0x{x:0>4}", .{lapic.flags});
-                    println("      - LINT#:              {}", .{lapic.lapic_lint_n});
-                },
-                else => {},
-            }
-            int_ctrl = @intToPtr(*const acpi.InterruptControllerHdr, @ptrToInt(int_ctrl) + int_ctrl.len);
-        }
+        //             ioregsel.* = 0;
+        //             println("      - IOAPICID:           0x{x:0>8}", .{iowin.*});
+        //             ioregsel.* = 1;
+        //             println("      - IOAPICVER:          0x{x:0>8}", .{iowin.*});
+        //             ioregsel.* = 2;
+        //             println("      - IOAPICARB:          0x{x:0>8}", .{iowin.*});
 
-        println("", .{});
-        println("  ### BGRT (Boot Graphics Resource Table) ###", .{});
-        println("", .{});
+        //         },
+        //         2 => {
+        //             const int_src_override = @ptrCast(*align(1) const acpi.InterruptSourceOverride, int_ctrl);
+        //             println("    [Interrupt Source Override]", .{});
+        //             println("      - Bus:                {}", .{int_src_override.bus});
+        //             println("      - Source:             {}", .{int_src_override.source});
+        //             println("      - GSI:                {}", .{int_src_override.gsi});
+        //             println("      - Flags:              0b{b:0>4}", .{int_src_override.flags});
+        //         },
+        //         4 => {
+        //             const lapic = @ptrCast(*align(1) const acpi.LAPIC_NMI, int_ctrl);
+        //             println("    [Local APIC NMI]", .{});
+        //             println("      - ACPI Processor UID: 0x{x: >2}", .{lapic.processor_uid});
+        //             println("      - Flags:              0x{x:0>4}", .{lapic.flags});
+        //             println("      - LINT#:              {}", .{lapic.lapic_lint_n});
+        //         },
+        //         else => {},
+        //     }
+        //     int_ctrl = @intToPtr(*const acpi.InterruptControllerHdr, @ptrToInt(int_ctrl) + int_ctrl.len);
+        // }
 
-        printTableDescHeader(@ptrCast(*const acpi.TableDescriptionHeader, &bgrt.hdr));
-        println("  - Version:        {}", .{bgrt.version});
-        println("  - Status:         0x{x:0>8}", .{bgrt.status});
-        println("  - Image Type:     {}", .{bgrt.image_type});
-        println("  - Image Address:  0x{x: >16}", .{bgrt.image_addr});
-        println("  - Image Offset X: {}", .{bgrt.image_offset_x});
-        println("  - Image Offset Y: {}", .{bgrt.image_offset_y});
+        // println("", .{});
+        // println("  ### BGRT (Boot Graphics Resource Table) ###", .{});
+        // println("", .{});
+
+        // printTableDescHeader(@ptrCast(*const acpi.TableDescriptionHeader, &bgrt.hdr));
+        // println("  - Version:        {}", .{bgrt.version});
+        // println("  - Status:         0x{x:0>8}", .{bgrt.status});
+        // println("  - Image Type:     {}", .{bgrt.image_type});
+        // println("  - Image Address:  0x{x: >16}", .{bgrt.image_addr});
+        // println("  - Image Offset X: {}", .{bgrt.image_offset_x});
+        // println("  - Image Offset Y: {}", .{bgrt.image_offset_y});
 
         println("", .{});
         // dumpHex(@intToPtr([*]const u8, (fadt.dsdt + 36)), (dsdt.length - 36));
+        // println("", .{});
         // dumpHex(@intToPtr([*]const u8, (@ptrToInt(madt) + 36 + 8)), 76);
     }
 }
@@ -343,43 +354,6 @@ fn getMemoryMap(bs: *uefi.tables.BootServices) void {
     println("  Total Memory: {s}", .{fmt.fmtIntSizeBin(max_memory)});
 }
 
-fn println(comptime format: [:0]const u8, args: anytype) void {
-    print(format ++ "\r\n", args);
-}
-
-fn print(comptime format: [:0]const u8, args: anytype) void {
-    const con_out = uefi.system_table.con_out.?;
-
-    var buf8: [256]u8 = undefined;
-    const msg = fmt.bufPrintZ(buf8[0..], format, args) catch unreachable;
-
-    var buf16: [256]u16 = undefined;
-    const idx = std.unicode.utf8ToUtf16Le(buf16[0..], msg) catch unreachable;
-    buf16[idx] = 0;
-    _ = con_out.outputString(@ptrCast([*:0]const u16, buf16[0..]));
-}
-
-fn printGuid(guid: uefi.Guid) void {
-    print("{x:0>8}-{x:0>4}-{X:0>4}-{X:0>2}{X:0>2}-{s:0>12}", .{
-        guid.time_low,
-        guid.time_mid,
-        guid.time_high_and_version,
-        guid.clock_seq_high_and_reserved,
-        guid.clock_seq_low,
-        fmt.fmtSliceHexLower(guid.node[0..]),
-    });
-}
-
-fn dumpHex(bytes: [*]const u8, count: usize) void {
-    var k: usize = 0;
-    while (k < count) : (k += 1) {
-        if (k != 0 and @mod(k, 16) == 0) {
-            println("", .{});
-        }
-        print("{X:0>2} ", .{bytes[k]});
-    }
-}
-
 fn halt() noreturn {
     while (true) {
         asm volatile (
@@ -388,8 +362,8 @@ fn halt() noreturn {
     }
 }
 
-fn shutdown_qemu() noreturn {
-    println("Shutting down", .{});
+fn shutdown() noreturn {
+    println("\nShutdown", .{});
     out16(0xB004, 0x2000);
     unreachable;
 }
