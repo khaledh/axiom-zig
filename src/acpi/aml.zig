@@ -149,19 +149,145 @@ var allocator = FixedBufferAllocator.init(&buf).allocator;
 
 // AST
 
-const TermList = struct {
-    term_obj: *TermObj,
-    term_list: *TermList,
-};
-
 const TermObj = union(enum) {
     obj: *Object,
     stmt_opcode: *StatementOpcode,
     expr_opcode: *ExpressionOpcode,
 };
 
-const StatementOpcode = struct {};
-const ExpressionOpcode = struct {};
+const StatementOpcode = struct {
+    // break_: *Break,
+    // break_point: *BreakPoint,
+    // continue_: *Continue,
+    // fatal: *Fatal,
+    // if_else: *IfElse,
+    // noop: *Noop,
+    // notify: *Notify,
+    // release: *Release,
+    // reset: *Reset,
+    // return_: *Return,
+    // signal: *Signal,
+    // sleep: *Sleep,
+    // stall: *Stall,
+    while_: *While
+};
+
+const While = struct {
+    predicate: *TermArg,
+    terms: []TermObj,
+};
+
+const ExpressionOpcode = union(enum) {
+    // DefAcquire,
+    // DefAdd,
+    // DefAnd,
+    // DefBuffer,
+    // DefConcat,
+    // DefConcatRes,
+    // DefCondRefOf,
+    // DefCopyObject,
+    // DefDecrement,
+    deref_of: *DerefOf,
+    // DefDivide,
+    // DefFindSetLeftBit,
+    // DefFindSetRightBit,
+    // DefFromBCD,
+    increment: *Increment,
+    index: *Index,
+    // DefLAnd,
+    // DefLEqual,
+    // DefLGreater,
+    // DefLGreaterEqual,
+    lless: *LLess,
+    // DefLLessEqual,
+    // DefMid,
+    // DefLNot,
+    // DefLNotEqual,
+    // DefLoadTable,
+    // DefLOr,
+    // DefMatch,
+    // DefMod,
+    // DefMultiply,
+    // DefNAnd,
+    // DefNOr,
+    // DefNot,
+    // DefObjectType,
+    // DefOr,
+    // DefPackage,
+    // DefVarPackage,
+    // DefRefOf,
+    // DefShiftLeft,
+    // DefShiftRight,
+    size_of: *SizeOf,
+    store: *Store,
+    subtract: *Subtract,
+    // DefTimer,
+    // DefToBCD,
+    to_buffer: *ToBuffer,
+    // DefToDecimalString,
+    to_hex_string: *ToHexString,
+    // DefToInteger,
+    // DefToString,
+    // DefWait,
+    // DefXOr,
+    // MethodInvocation,
+};
+
+const DerefOf = struct {
+    obj_ref: *TermArg,
+};
+
+const Increment = struct {
+    operand: *SuperName,
+};
+
+const Index = struct {
+    obj: *TermArg,
+    index: *TermArg,
+    target: ?*SuperName,
+};
+
+const LLess = struct {
+    operand1: *TermArg,
+    operand2: *TermArg,
+};
+
+const SizeOf = struct {
+    operand: *SuperName,
+};
+
+const Store = struct {
+    operand: *TermArg,
+    target: *SuperName,
+};
+
+const Subtract = struct {
+    operand1: *TermArg,
+    operand2: *TermArg,
+    target: ?*SuperName,
+};
+
+const ToBuffer = struct {
+    operand: *TermArg,
+    target: ?*SuperName,
+};
+
+const ToHexString = struct {
+    operand: *TermArg,
+    target: ?*SuperName,
+};
+
+const SuperName = union(enum) {
+    simple_name: *SimpleName,
+    // debug_obj: DebugObj,
+    // ref_type_opcode: ReferenceTypeOpcode,
+};
+
+const SimpleName = union(enum) {
+    name: *NameString,
+    arg: ArgObj,
+    local: LocalObj
+};
 
 const Object = union(enum) {
     ns_mod_obj: *NameSpaceModifierObj,
@@ -176,7 +302,7 @@ const NameSpaceModifierObj = union(enum) {
 
 const DefScope = struct {
     name: *NameString,
-    // term_list: *TermList,
+    terms: []TermObj,
 };
 
 const NameString = union(enum) {
@@ -220,15 +346,15 @@ const NameSeg = [4]u8;
 
 const DefMethod = struct {
     name: *NameString,
-    // flags: MethodFlags,
-    // term_list: []TermList,
+    flags: u8,
+    terms: []TermObj,
 };
 
 const TermArg = union(enum) {
-    // ExpressionOpcode,
+    expr_opcode: *ExpressionOpcode,
     data_obj: *DataObject,
-    // ArgObj,
-    // LocalObj,
+    arg_obj: ArgObj,
+    local_obj: LocalObj,
 };
 
 const DataObject = union(enum) {
@@ -237,8 +363,29 @@ const DataObject = union(enum) {
     // DefVarPackage,
 };
 
+const ArgObj = enum(u8) {
+    arg0 = @enumToInt(OpCodeByte.Arg0Op),
+    arg1 = @enumToInt(OpCodeByte.Arg1Op),
+    arg2 = @enumToInt(OpCodeByte.Arg2Op),
+    arg3 = @enumToInt(OpCodeByte.Arg3Op),
+    arg4 = @enumToInt(OpCodeByte.Arg4Op),
+    arg5 = @enumToInt(OpCodeByte.Arg5Op),
+    arg6 = @enumToInt(OpCodeByte.Arg6Op),
+};
+
+const LocalObj = enum(u8) {
+    local0 = @enumToInt(OpCodeByte.Local0Op),
+    local1 = @enumToInt(OpCodeByte.Local1Op),
+    local2 = @enumToInt(OpCodeByte.Local2Op),
+    local3 = @enumToInt(OpCodeByte.Local3Op),
+    local4 = @enumToInt(OpCodeByte.Local4Op),
+    local5 = @enumToInt(OpCodeByte.Local5Op),
+    local6 = @enumToInt(OpCodeByte.Local6Op),
+    local7 = @enumToInt(OpCodeByte.Local7Op)
+};
+
 const ComputationalData = union(enum) {
-    // ByteConst,
+    byte_const: u8,
     word_const: u16,
     // DWordConst,
     // QWordConst,
@@ -254,40 +401,42 @@ var block: []const u8 = undefined;
 var loc: usize = 0;
 var indent: usize = 0;
 
-fn printIndented(comptime str: [:0]const u8) void {
+fn printIndented(comptime str: [:0]const u8, args: anytype) void {
     var i: usize = 0;
     while (i < indent) : (i += 1) {
         print(" ", .{});
     }
-    println(str, .{});
+    println(str, args);
 }
 
 pub fn parse(aml_block: []const u8) void {
     block = aml_block;
-    _ = termList() catch void;
+    _ = terms(0) catch void;
 }
 
-fn termList() AllocationError!?*TermList {
-    printIndented(@src().fn_name);
+fn terms(len: usize) AllocationError![]TermObj {
+    // printIndented(@src().fn_name);
     indent += 2;
 
-    var result: ?*TermList = null;
+    var result: []TermObj = undefined;
 
-    if (try termObj()) |term_obj| {
-        if (try termList()) |inner_term_list| {
-            var term_list = try allocator.create(TermList);
-            term_list.term_obj = term_obj;
-            term_list.term_list = inner_term_list;
-            result = term_list;
+    const start_loc = loc;
+    var list = std.ArrayList(TermObj).init(&allocator);
+    while (try termObj()) |term_obj| {
+        try list.append(term_obj.*);
+        if (len > 0 and loc - start_loc >= len) {
+            break;
         }
     }
+
+    result = list.items;
 
     indent -= 2;
     return result;
 }
 
 fn termObj() !?*TermObj {
-    printIndented(@src().fn_name);
+    // printIndented(@src().fn_name);
     indent += 2;
 
     const result = blk: {
@@ -299,7 +448,7 @@ fn termObj() !?*TermObj {
             break :blk term_obj;
         }
 
-        if (statementOpCode()) |stmt_opcode| {
+        if (try statementOpCode()) |stmt_opcode| {
             var term_obj = try allocator.create(TermObj);
             term_obj.* = TermObj{
                 .stmt_opcode = stmt_opcode,
@@ -307,7 +456,7 @@ fn termObj() !?*TermObj {
             break :blk term_obj;
         }
 
-        if (expressionOpCode()) |expr_opcode| {
+        if (try expressionOpCode()) |expr_opcode| {
             var term_obj = try allocator.create(TermObj);
              term_obj.* = TermObj{
                 .expr_opcode = expr_opcode,
@@ -317,13 +466,12 @@ fn termObj() !?*TermObj {
 
         break :blk null;
     };
-
     indent -= 2;
     return result;
 }
 
 fn object() !?*Object {
-    printIndented(@src().fn_name);
+    // printIndented(@src().fn_name);
     indent += 2;
 
     const result = blk: {
@@ -350,18 +498,271 @@ fn object() !?*Object {
     return result;
 }
 
-fn statementOpCode() ?*StatementOpcode {
-    printIndented(@src().fn_name);
-    return null;
+fn statementOpCode() !?*StatementOpcode {
+    // printIndented(@src().fn_name);
+    indent += 2;
+
+    var result: ?*StatementOpcode = null;
+
+    if (matchOpCodeByte(.WhileOp)) {
+        const start_loc = loc;
+        if (pkgLength()) |pkglen| {
+            printIndented("While()", .{});
+            if (try termArg()) |predicate| {
+                const len = pkglen - (loc - start_loc);
+                var while_ = try allocator.create(While);
+                while_.* = While{
+                    .predicate = predicate,
+                    .terms = try terms(len),
+                };
+
+                var stmt_opcode = try allocator.create(StatementOpcode);
+                stmt_opcode.* = StatementOpcode{
+                    .while_ = while_,
+                };
+
+                result = stmt_opcode;
+
+            }
+        }
+    }
+
+    indent -= 2;
+    return result;
 }
 
-fn expressionOpCode() ?*ExpressionOpcode {
-    printIndented(@src().fn_name);
-    return null;
+fn expressionOpCode() !?*ExpressionOpcode {
+    // printIndented(@src().fn_name);
+    indent += 2;
+
+    var result: ?*ExpressionOpcode = null;
+
+    if (matchOpCodeByte(.DerefOfOp)) {
+        printIndented("DerefOf()", .{});
+        if (try termArg()) |obj_ref| {
+            var deref_of = try allocator.create(DerefOf);
+            deref_of.* = DerefOf{
+                .obj_ref = obj_ref,
+            };
+
+            var expr_opcode = try allocator.create(ExpressionOpcode);
+            expr_opcode.* = ExpressionOpcode{
+                .deref_of = deref_of,
+            };
+
+            result = expr_opcode;
+
+        }
+    }
+    else if (matchOpCodeByte(.LLessOp)) {
+        printIndented("LLess()", .{});
+        if (try termArg()) |operand1| {
+            if (try termArg()) |operand2| {
+                var lless = try allocator.create(LLess);
+                lless.* = LLess{
+                    .operand1 = operand1,
+                    .operand2 = operand2,
+                };
+
+                var expr_opcode = try allocator.create(ExpressionOpcode);
+                expr_opcode.* = ExpressionOpcode{
+                    .lless = lless,
+                };
+
+                result = expr_opcode;
+
+            }
+        }
+    }
+    else if (matchOpCodeByte(.IncrementOp)) {
+        printIndented("Increment()", .{});
+        if (try superName()) |operand| {
+            var increment = try allocator.create(Increment);
+            increment.* = Increment{
+                .operand = operand,
+            };
+
+            var expr_opcode = try allocator.create(ExpressionOpcode);
+            expr_opcode.* = ExpressionOpcode{
+                .increment = increment,
+            };
+
+            result = expr_opcode;
+
+        }
+    }
+    else if (matchOpCodeByte(.IndexOp)) {
+        printIndented("Index()", .{});
+        if (try termArg()) |obj| {
+            if (try termArg()) |index_val| {
+                var index = try allocator.create(Index);
+                index.* = Index{
+                    .obj = obj,
+                    .index = index_val,
+                    .target = try superName(),
+                };
+
+                var expr_opcode = try allocator.create(ExpressionOpcode);
+                expr_opcode.* = ExpressionOpcode{
+                    .index = index,
+                };
+
+                result = expr_opcode;
+
+            }
+        }
+    }
+    else if (matchOpCodeByte(.SizeOfOp)) {
+        printIndented("SizeOf()", .{});
+        if (try superName()) |operand| {
+            var size_of = try allocator.create(SizeOf);
+            size_of.* = SizeOf{
+                .operand = operand,
+            };
+
+            var expr_opcode = try allocator.create(ExpressionOpcode);
+            expr_opcode.* = ExpressionOpcode{
+                .size_of = size_of,
+            };
+
+            result = expr_opcode;
+
+        }
+    }
+    else if (matchOpCodeByte(.StoreOp)) {
+        printIndented("Store()", .{});
+        if (try termArg()) |operand| {
+            if (try superName()) |target| {
+                var store = try allocator.create(Store);
+                store.* = Store{
+                    .operand = operand,
+                    .target = target,
+                };
+
+                var expr_opcode = try allocator.create(ExpressionOpcode);
+                expr_opcode.* = ExpressionOpcode{
+                    .store = store,
+                };
+
+                result = expr_opcode;
+
+            }
+        }
+    }
+    else if (matchOpCodeByte(.SubtractOp)) {
+        printIndented("Subtract()", .{});
+        if (try termArg()) |operand1| {
+            if (try termArg()) |operand2| {
+                var subtract = try allocator.create(Subtract);
+                subtract.* = Subtract{
+                    .operand1 = operand1,
+                    .operand2 = operand2,
+                    .target = try superName(),
+                };
+
+                var expr_opcode = try allocator.create(ExpressionOpcode);
+                expr_opcode.* = ExpressionOpcode{
+                    .subtract = subtract,
+                };
+
+                result = expr_opcode;
+
+            }
+        }
+    }
+    else if (matchOpCodeByte(.ToHexStringOp)) {
+        printIndented("ToHexString()", .{});
+        if (try termArg()) |operand| {
+            var to_hex_string = try allocator.create(ToHexString);
+            to_hex_string.* = ToHexString{
+                .operand = operand,
+                .target = try superName(),
+            };
+
+            var expr_opcode = try allocator.create(ExpressionOpcode);
+            expr_opcode.* = ExpressionOpcode{
+                .to_hex_string = to_hex_string,
+            };
+
+            result = expr_opcode;
+
+        }
+    }
+    else if (matchOpCodeByte(.ToBufferOp)) {
+        printIndented("ToBuffer()", .{});
+        if (try termArg()) |operand| {
+            var to_buffer = try allocator.create(ToBuffer);
+            to_buffer.* = ToBuffer{
+                .operand = operand,
+                .target = try superName(),
+            };
+
+            var expr_opcode = try allocator.create(ExpressionOpcode);
+            expr_opcode.* = ExpressionOpcode{
+                .to_buffer = to_buffer,
+            };
+
+            result = expr_opcode;
+
+        }
+    }
+
+    indent -= 2;
+    return result;
+}
+
+fn superName() !?*SuperName {
+    // printIndented(@src().fn_name);
+    indent += 2;
+
+    var result: ?*SuperName = null;
+
+    if (try simpleName()) |simple_name| {
+        var super_name = try allocator.create(SuperName);
+        super_name.* = SuperName{
+            .simple_name = simple_name,
+        };
+        result = super_name;
+    }
+
+    indent -= 2;
+    return result;
+}
+
+fn simpleName() !?*SimpleName {
+    // printIndented(@src().fn_name);
+    indent += 2;
+
+    var result: ?*SimpleName = null;
+
+    if (try nameString()) |name_str| {
+        var simple_name = try allocator.create(SimpleName);
+        simple_name.* = SimpleName{
+            .name = name_str,
+        };
+        result = simple_name;
+    }
+    else if (argObj()) |arg| {
+        var simple_name = try allocator.create(SimpleName);
+        simple_name.* = SimpleName{
+            .arg = arg,
+        };
+        result = simple_name;
+    }
+    else if (localObj()) |local| {
+        var simple_name = try allocator.create(SimpleName);
+        simple_name.* = SimpleName{
+            .local = local,
+        };
+        result = simple_name;
+    }
+
+    indent -= 2;
+    return result;
 }
 
 fn namespaceModifierObj() !?*NameSpaceModifierObj {
-    printIndented(@src().fn_name);
+    // printIndented(@src().fn_name);
     indent += 2;
 
     var result: ?*NameSpaceModifierObj = null;
@@ -397,7 +798,7 @@ fn namespaceModifierObj() !?*NameSpaceModifierObj {
 }
 
 fn namedObj() !?*NamedObj {
-    printIndented(@src().fn_name);
+    // printIndented(@src().fn_name);
     indent += 2;
 
     var result: ?*NamedObj = null;
@@ -435,7 +836,7 @@ fn namedObj() !?*NamedObj {
 }
 
 fn defOpRegion() !?*DefOpRegion {
-    printIndented(@src().fn_name);
+    // printIndented(@src().fn_name);
     indent += 2;
 
     var result: ?*DefOpRegion = null;
@@ -445,6 +846,10 @@ fn defOpRegion() !?*DefOpRegion {
             const region_space = advance();
             if (try termArg()) |region_offset| {
                 if (try termArg()) |region_len| {
+                    switch (name_str.*) {
+                        .abs_name => printIndented("OperationRegion ({s})", .{name_str.abs_name}),
+                        .rel_name => printIndented("OperationRegion ({s})", .{name_str.rel_name}),
+                    }
                     var def_op_region = try allocator.create(DefOpRegion);
                     def_op_region.* = DefOpRegion{
                         .name = name_str,
@@ -454,10 +859,6 @@ fn defOpRegion() !?*DefOpRegion {
                     };
                     result = def_op_region;
 
-                    switch (name_str.*) {
-                        .abs_name => println("OperationRegion ({s})", .{name_str.abs_name}),
-                        .rel_name => println("OperationRegion ({s})", .{name_str.rel_name}),
-                    }
                 }
             }
         }
@@ -475,7 +876,7 @@ fn defOpRegion() !?*DefOpRegion {
 }
 
 // fn regionSpace() bool {
-//     printIndented(@src().fn_name);
+//     // printIndented(@src().fn_name);
 //     // TODO: read ByteData
 //     // ByteData
 //     //   0x00 SystemMemory
@@ -496,7 +897,7 @@ fn defOpRegion() !?*DefOpRegion {
 // }
 
 // fn regionOffset() bool {
-//     printIndented(@src().fn_name);
+//     // printIndented(@src().fn_name);
 //     indent += 2;
 
 //     const result = termArg();
@@ -506,7 +907,7 @@ fn defOpRegion() !?*DefOpRegion {
 // }
 
 // fn regionLen() bool {
-//     printIndented(@src().fn_name);
+//     // printIndented(@src().fn_name);
 //     indent += 2;
 
 //     const result = termArg();
@@ -516,17 +917,19 @@ fn defOpRegion() !?*DefOpRegion {
 // }
 
 fn defField() !?*DefField {
-    printIndented(@src().fn_name);
+    // printIndented(@src().fn_name);
     indent += 2;
 
     var result: ?*DefField = null;
+    const start_loc = loc;
 
     if (matchOpCodeWord(.FieldOp)) {
-        if (pkgLength()) |_| {
+        if (pkgLength()) |pkglen| {
             if (try nameString()) |name_str| {
+                _ = pkglen - (loc - start_loc);
                 switch (name_str.*) {
-                    .abs_name => println("Field ({s})", .{name_str.abs_name}),
-                    .rel_name => println("Field ({s})", .{name_str.rel_name}),
+                    .abs_name => printIndented("Field ({s})", .{name_str.abs_name}),
+                    .rel_name => printIndented("Field ({s})", .{name_str.rel_name}),
                 }
 
                 const flags = advance();
@@ -555,7 +958,7 @@ fn defField() !?*DefField {
 }
 
 fn fieldList() !?[]FieldElement {
-    printIndented(@src().fn_name);
+    // printIndented(@src().fn_name);
     indent += 2;
 
     var result: ?[]FieldElement = null;
@@ -579,7 +982,7 @@ fn fieldList() !?[]FieldElement {
 }
 
 fn namedField() !?*NamedField {
-    printIndented(@src().fn_name);
+    // printIndented(@src().fn_name);
     indent += 2;
 
     var result: ?*NamedField = null;
@@ -594,7 +997,7 @@ fn namedField() !?*NamedField {
         
         result = named_fld;
 
-        println("NamedField ({s}, {})", .{named_fld.name, named_fld.bits});
+        printIndented("NamedField ({s}, {})", .{named_fld.name, named_fld.bits});
     }
 
     indent -= 2;
@@ -602,24 +1005,28 @@ fn namedField() !?*NamedField {
 }
 
 fn defMethod() !?*DefMethod {
-    printIndented(@src().fn_name);
+    // printIndented(@src().fn_name);
     indent += 2;
 
     var result: ?*DefMethod = null;
-
     if (matchOpCodeByte(.MethodOp)) {
-        if (pkgLength()) |_| {
+        const start_loc = loc;
+        if (pkgLength()) |pkglen| {
             if (try nameString()) |name_str| {
+                switch (name_str.*) {
+                    .abs_name => printIndented("Method ({s})", .{name_str.abs_name}),
+                    .rel_name => printIndented("Method ({s})", .{name_str.rel_name}),
+                }
+                const flags = advance();
+                const len = pkglen - (loc - start_loc);
                 var def_method = try allocator.create(DefMethod);
                 def_method.* = DefMethod{
                     .name = name_str,
+                    .flags = flags,
+                    .terms = try terms(len),
                 };
                 result = def_method;
 
-                switch (name_str.*) {
-                    .abs_name => println("Method ({s})", .{name_str.abs_name}),
-                    .rel_name => println("Method ({s})", .{name_str.rel_name}),
-                }
             }
         }
     }
@@ -635,36 +1042,47 @@ fn defMethod() !?*DefMethod {
     return result;
 }
 
-fn termArg() !?*TermArg {
-    printIndented(@src().fn_name);
+fn termArg() AllocationError!?*TermArg {
+    // printIndented(@src().fn_name);
     indent += 2;
 
     var result: ?*TermArg = null;
 
-    if (try dataObject()) |data_obj| {
+    if (try expressionOpCode()) |expr_opcode| {
+        var term_arg = try allocator.create(TermArg);
+        term_arg.* = TermArg{
+            .expr_opcode = expr_opcode,
+        };
+        result = term_arg;
+    }
+    else if (try dataObject()) |data_obj| {
         var term_arg = try allocator.create(TermArg);
         term_arg.* = TermArg{
             .data_obj = data_obj,
         };
         result = term_arg;
     }
-    // const result =
-    //     expressionOpcode() or
-    //     dataObject() or
-    //     argObj() or
-    //     localObj();
+    else if (argObj()) |arg_obj| {
+        var term_arg = try allocator.create(TermArg);
+        term_arg.* = TermArg{
+            .arg_obj = arg_obj,
+        };
+        result = term_arg;
+    }
+    else if (localObj()) |local_obj| {
+        var term_arg = try allocator.create(TermArg);
+        term_arg.* = TermArg{
+            .local_obj = local_obj,
+        };
+        result = term_arg;
+    }
 
     indent -= 2;
     return result;
 }
 
-// fn expressionOpcode() bool {
-//     printIndented(@src().fn_name);
-//     return false;
-// }
-
 fn dataObject() !?*DataObject {
-    printIndented(@src().fn_name);
+    // printIndented(@src().fn_name);
     indent += 2;
 
     var result: ?*DataObject = null;
@@ -686,18 +1104,26 @@ fn dataObject() !?*DataObject {
 }
 
 fn computationalData() !?*ComputationalData {
-    printIndented(@src().fn_name);
+    // printIndented(@src().fn_name);
     indent += 2;
 
     var result: ?*ComputationalData = null;
 
-    if (wordConst()) |word_const| {
+    if (byteConst()) |byte_const| {
+        var comp_data = try allocator.create(ComputationalData);
+        comp_data.* = ComputationalData{
+            .byte_const = byte_const,
+        };
+        result = comp_data;
+    }
+    else if (wordConst()) |word_const| {
         var comp_data = try allocator.create(ComputationalData);
         comp_data.* = ComputationalData{
             .word_const = word_const,
         };
         result = comp_data;
-    } else if (constObj()) |const_obj| {
+    }
+    else if (constObj()) |const_obj| {
         var comp_data = try allocator.create(ComputationalData);
         comp_data.* = ComputationalData{
             .const_obj = const_obj,
@@ -714,12 +1140,24 @@ fn computationalData() !?*ComputationalData {
 }
 
 // fn byteConst() bool {
-//     printIndented(@src().fn_name);
+//     // printIndented(@src().fn_name);
 //     return false;
 // }
 
+fn byteConst() ?u8 {
+    // printIndented(@src().fn_name);
+    
+    var result: ?u8 = null;
+
+    if (matchPrefix(.BytePrefix)) {
+        result = advance();
+    }
+
+    return result;
+}
+
 fn wordConst() ?u16 {
-    printIndented(@src().fn_name);
+    // printIndented(@src().fn_name);
     
     var result: ?u16 = null;
 
@@ -731,7 +1169,7 @@ fn wordConst() ?u16 {
 }
 
 fn constObj() ?u8 {
-    printIndented(@src().fn_name);
+    // printIndented(@src().fn_name);
     
     var result: ?u8 = null;
 
@@ -746,64 +1184,77 @@ fn constObj() ?u8 {
     return result;
 }
 
-// fn argObj() bool {
-//     printIndented(@src().fn_name);
-//     return false;
-// }
+fn argObj() ?ArgObj {
+    // printIndented(@src().fn_name);
+    
+    var result: ?ArgObj = null;
 
-// fn localObj() bool {
-//     printIndented(@src().fn_name);
-//     return false;
-// }
+    if (matchByteRange(@enumToInt(OpCodeByte.Arg0Op), @enumToInt(OpCodeByte.Arg6Op))) |arg| {
+        result = @intToEnum(ArgObj, arg);
+    }
+
+    return result;
+}
+
+fn localObj() ?LocalObj {
+    // printIndented(@src().fn_name);
+    
+    var result: ?LocalObj = null;
+
+    if (matchByteRange(@enumToInt(OpCodeByte.Local0Op), @enumToInt(OpCodeByte.Local7Op))) |local| {
+        result = @intToEnum(LocalObj, local);
+    }
+
+    return result;
+}
 
 // fn defAlias() !*DefAlias {
-//     printIndented(@src().fn_name);
+//     // printIndented(@src().fn_name);
 //     return null;
 // }
 
 // fn defName() bool {
-//     printIndented(@src().fn_name);
+//     // printIndented(@src().fn_name);
 //     return false;
 // }
 
 fn defScope() !?*DefScope {
-    printIndented(@src().fn_name);
+    // printIndented(@src().fn_name);
     indent += 2;
 
     var result: ?*DefScope = null;
 
     if (matchOpCodeByte(.ScopeOp)) {
-        if (pkgLength()) |_| {
+        const start_loc = loc;
+        if (pkgLength()) |pkglen| {
             if (try nameString()) |name_str| {
+                switch (name_str.*) {
+                    .abs_name => printIndented("Scope ({s})", .{name_str.abs_name}),
+                    .rel_name => printIndented("Scope ({s})", .{name_str.rel_name}),
+                }
+                const len = pkglen - (loc - start_loc);
                 var def_scope = try allocator.create(DefScope);
-                def_scope.name = name_str;
+                def_scope.* = DefScope{
+                    .name = name_str,
+                    .terms = try terms(len),
+                };
                 result = def_scope;
 
-                switch (name_str.*) {
-                    .abs_name => println("Scope ({s})", .{name_str.abs_name}),
-                    .rel_name => println("Scope ({s})", .{name_str.rel_name}),
-                }
             }
         }
     }
-
-    // const result =
-    //     scopeOp() and
-    //     pkgLength() and
-    //     nameString() and
-    //     termList();
 
     indent -= 2;
     return result;
 }
 
 fn pkgLength() ?u32 {
-    printIndented(@src().fn_name);
+    // printIndented(@src().fn_name);
     return matchPkgLength();
 }
 
 fn nameString() !?*NameString {
-    printIndented(@src().fn_name);
+    // printIndented(@src().fn_name);
     indent += 2;
 
     var result: ?*NameString = null;
@@ -812,10 +1263,10 @@ fn nameString() !?*NameString {
         if (try namePath()) |name_path| {
             var name_string = try allocator.create(NameString);
             name_string.* = NameString{
-                .abs_name = name_path,
+                .abs_name = try std.mem.concat(&allocator, u8, &[_][]const u8{ "\\", name_path }),
             };
             result = name_string;
-            println("\\{s}", .{name_path});
+            // printIndented("{s}", .{name_string.abs_name});
         }
     } else if (try prefixPath()) |prefix_path| {
         if (try namePath()) |name_path| {
@@ -824,7 +1275,7 @@ fn nameString() !?*NameString {
                 .rel_name = try std.mem.concat(&allocator, u8, &[_][]const u8{ prefix_path, name_path }),
             };
             result = name_string;
-            println("{s}", .{name_string.rel_name});
+            // printIndented("{s}", .{name_string.rel_name});
         }
     }
 
@@ -833,12 +1284,12 @@ fn nameString() !?*NameString {
 }
 
 fn rootChar() bool {
-    printIndented(@src().fn_name);
+    // printIndented(@src().fn_name);
     return matchChar(.RootChar);
 }
 
 fn prefixPath() !?[]u8 {
-    printIndented(@src().fn_name);
+    // printIndented(@src().fn_name);
     indent += 2;
 
     var result: ?[]u8 = null;
@@ -860,7 +1311,7 @@ fn prefixPath() !?[]u8 {
 }
 
 fn namePath() !?[]const u8 {
-    printIndented(@src().fn_name);
+    // printIndented(@src().fn_name);
     indent += 2;
 
     var result: ?[]const u8 = null;
@@ -882,7 +1333,7 @@ fn namePath() !?[]const u8 {
 }
 
 fn nameSeg() ?[4]u8 {
-    printIndented(@src().fn_name);
+    // printIndented(@src().fn_name);
     indent += 2;
 
     var result: ?[4]u8 = null;
@@ -902,30 +1353,15 @@ fn nameSeg() ?[4]u8 {
 }
 
 fn leadNameChar() ?u8 {
-    printIndented(@src().fn_name);
+    // printIndented(@src().fn_name);
     indent += 2;
 
     var result: ?u8 = null;
 
     if (matchCharRange(.AlphaChar_Start, .AlphaChar_End)) |ch| {
         result = ch;
-    } else if (matchCharRange(.DigitChar_Start, .DigitChar_End)) |ch| {
-        result = ch;
     }
-
-    indent -= 2;
-    return result;
-}
-
-fn nameChar() ?u8 {
-    printIndented(@src().fn_name);
-    indent += 2;
-
-    var result: ?u8 = null;
-
-    if (leadNameChar()) |ch| {
-        result = ch;
-    } else if (matchChar(.UnderscoreChar)) {
+    else if (matchChar(.UnderscoreChar)) {
         result = '_';
     }
 
@@ -933,8 +1369,25 @@ fn nameChar() ?u8 {
     return result;
 }
 
+fn nameChar() ?u8 {
+    // printIndented(@src().fn_name);
+    indent += 2;
+
+    var result: ?u8 = null;
+
+    if (leadNameChar()) |ch| {
+        result = ch;
+    }
+    else if (matchCharRange(.DigitChar_Start, .DigitChar_End)) |ch| {
+        result = ch;
+    }
+
+    indent -= 2;
+    return result;
+}
+
 fn dualNamePath() !?[]const u8 {
-    printIndented(@src().fn_name);
+    // printIndented(@src().fn_name);
     indent += 2;
 
     var result: ?[]const u8 = null;
@@ -952,7 +1405,7 @@ fn dualNamePath() !?[]const u8 {
 }
 
 // fn multiNamePath() bool {
-//     printIndented(@src().fn_name);
+//     // printIndented(@src().fn_name);
 //     indent += 2;
 
 //     if (!matchPrefix(.MultiNamePrefix)) {
@@ -970,7 +1423,7 @@ fn dualNamePath() !?[]const u8 {
 // }
 
 fn nullName() bool {
-    printIndented(@src().fn_name);
+    // printIndented(@src().fn_name);
     return matchChar(.Null);
 }
 
@@ -979,7 +1432,7 @@ fn nullName() bool {
 //
 
 fn matchOpCodeByte(opCode: OpCodeByte) bool {
-    // printIndented(@src().fn_name);
+    // // printIndented(@src().fn_name);
     if (peekByte() == @enumToInt(opCode)) {
         _ = advance();
         return true;
@@ -988,7 +1441,7 @@ fn matchOpCodeByte(opCode: OpCodeByte) bool {
 }
 
 fn matchOpCodeWord(opCode: OpCodeWord) bool {
-    // printIndented(@src().fn_name);
+    // // printIndented(@src().fn_name);
     if (peekWord() == @enumToInt(opCode)) {
         _ = advance();
         _ = advance();
@@ -998,22 +1451,22 @@ fn matchOpCodeWord(opCode: OpCodeWord) bool {
 }
 
 fn matchPrefix(prefix: Prefix) bool {
-    // printIndented(@src().fn_name);
+    // // printIndented(@src().fn_name);
     return matchByte(@enumToInt(prefix));
 }
 
 fn matchChar(ch: Char) bool {
-    // printIndented(@src().fn_name);
+    // // printIndented(@src().fn_name);
     return matchByte(@enumToInt(ch));
 }
 
 fn matchCharRange(start: Char, end: Char) ?u8 {
-    // printIndented(@src().fn_name);
+    // // printIndented(@src().fn_name);
     return matchByteRange(@enumToInt(start), @enumToInt(end));
 }
 
 fn matchByte(byte: u8) bool {
-    // printIndented(@src().fn_name);
+    // // printIndented(@src().fn_name);
     if (peekByte() == byte) {
         _ = advance();
         return true;
@@ -1022,7 +1475,7 @@ fn matchByte(byte: u8) bool {
 }
 
 fn matchByteRange(start: u8, end: u8) ?u8 {
-    // printIndented(@src().fn_name);
+    // // printIndented(@src().fn_name);
     const byte = peekByte();
     if (byte >= start and byte <= end) {
         return advance();
@@ -1031,7 +1484,7 @@ fn matchByteRange(start: u8, end: u8) ?u8 {
 }
 
 fn matchPkgLength() ?u32 {
-    printIndented(@src().fn_name);
+    // printIndented(@src().fn_name);
 
     var length: ?u32 = null;
 
@@ -1044,7 +1497,7 @@ fn matchPkgLength() ?u32 {
         var len = @intCast(u32, advance() & 0x0F);
         var i: usize = 1;
         while (i < count + 1) : (i += 1) {
-            len |= @intCast(u32, advance()) << @intCast(u5, i * 8);
+            len |= @intCast(u32, advance()) << @intCast(u5, i * 8 - 4);
         }
         length = len;
     }
@@ -1053,17 +1506,17 @@ fn matchPkgLength() ?u32 {
 }
 
 fn peekByte() u8 {
-    // printIndented(@src().fn_name);
+    // // printIndented(@src().fn_name);
     return block[loc];
 }
 
 fn peekWord() u16 {
-    // printIndented(@src().fn_name);
+    // // printIndented(@src().fn_name);
     return block[loc] | @intCast(u16, block[loc + 1]) << 8;
 }
 
 fn advance() u8 {
-    printIndented(@src().fn_name);
+    // printIndented(@src().fn_name);
     loc += 1;
     return block[loc - 1];
 }
