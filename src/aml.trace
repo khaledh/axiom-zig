@@ -1,0 +1,1017 @@
+AMLCode
+  DefBlockHeader
+    TableSignature TableLength SpecCompliance CheckSum OemID OemTableID OemRevision CreatorID CreatorRevision
+  TermObj*
+
+-- Scope (\) ----------------------------------------------------------------------------------------------------------
+
+  = TermObj
+      Object | StatementOpcode | ExpressionOpcode
+    = Object
+        NameSpaceModifierObj | NamedObj
+      = NameSpaceModifierObj
+          DefAlias | DefName | DefScope
+        = DefScope
+            ScopeOp PkgLength NameString TermObj*
+          = ScopeOp [10]
+          = PkgLength [49] [04] => b[<01><00> 1001] [0000 0100] => b[0000 0100 1001] => 0x49 = 73
+          = NameString
+              RootChar NamePath | PrefixPath NamePath
+            = RootChar NamePath
+              = RootChar [5C] = '\\'
+              = NamePath
+                  NameSeg | DualNamePath | MultiNamePath | NullName
+                = NullName [00]
+  -- OperationRegion (DBG_) -------------------------------------------------------------------------------------------
+          = TermObj
+              Object | StatementOpcode | ExpressionOpcode
+            = Object
+                NameSpaceModifierObj | NamedObj
+              = NamedObj
+                  DefBankField | DefCreateBitField | DefCreateByteField | DefCreateDWordField | DefCreateField | DefCreateQWordField | DefCreateWordField | DefDataRegion | DefDevice | DefEvent | DefExternal | DefField | DefIndexField | DefMethod | DefMutex | DefOpRegion | DefPowerRes | DefThermalZone
+                = DefOpRegion
+                    OpRegionOp NameString RegionSpace RegionOffset RegionLen
+                  = OpRegionOp
+                      ExtOpPrefix 0x80
+                    = ExtOpPrefix [5B]
+                    = [80]
+                  = NameString
+                      RootChar NamePath | PrefixPath NamePath
+                    = PrefixPath NamePath
+                      = PrefixPath
+                          Nothing | <'^' PrefixPath>
+                        = Nothing
+                        = NamePath
+                            NameSeg | DualNamePath | MultiNamePath | NullName
+                          = NameSeg
+                              LeadNameChar NameChar NameChar NameChar
+                            = LeadNameChar [44] D
+                            = NameChar     [42] B
+                            = NameChar     [47] G
+                            = NameChar     [5F] _
+                  = RegionSpace
+                      ByteData [01] => SystemIO
+                  = RegionOffset
+                      TermArg => Integer
+                        ExpressionOpcode | DataObject | ArgObj | LocalObj
+                      = DataObject
+                          ComputationalData | DefPackage | DefVarPackage
+                        = ComputationalData
+                            ByteConst | WordConst | DWordConst | QWordConst | String | ConstObj | RevisionOp | DefBuffer
+                          = WordConst
+                              WordPrefix WordData
+                            = WordPrefix [0B]
+                            = WordData [02] [04] = 0x0402
+                  = RegionLen
+                      TermArg => Integer
+                        ExpressionOpcode | DataObject | ArgObj | LocalObj
+                      = DataObject
+                          ComputationalData | DefPackage | DefVarPackage
+                        = ComputationalData
+                            ByteConst | WordConst | DWordConst | QWordConst | String | ConstObj | RevisionOp | DefBuffer
+                          = ConstObj
+                              ZeroOp | OneOp | OnesOp
+                            = OneOp [01]
+  -- Field (DBG_) -----------------------------------------------------------------------------------------------------
+          = TermObj
+              Object | StatementOpcode | ExpressionOpcode
+              = Object
+                  NameSpaceModifierObj | NamedObj
+                = NamedObj
+                    DefBankField | DefCreateBitField | DefCreateByteField | DefCreateDWordField | DefCreateField | DefCreateQWordField | DefCreateWordField | DefDataRegion | DefDevice | DefEvent | DefExternal | DefField | DefIndexField | DefMethod | DefMutex | DefOpRegion | DefPowerRes | DefThermalZone
+                  = DefField
+                      FieldOp PkgLength NameString FieldFlags FieldList
+                    = FieldOp
+                      = ExtOpPrefix 0x81
+                        = ExtOpPrefix [5B]
+                        = [81]
+                    = PkgLength [0B] = b[<00><00> 1011] => 0x0B => 11
+                    = NameString
+                        RootChar NamePath | PrefixPath NamePath
+                      = PrefixPath NamePath
+                        = PrefixPath
+                            Nothing | <'^' PrefixPath>
+                          = Nothing
+                        = NamePath
+                            NameSeg | DualNamePath | MultiNamePath | NullName
+                          = NameSeg
+                              LeadNameChar NameChar NameChar NameChar
+                            = LeadNameChar [44] D
+                            = NameChar     [42] B
+                            = NameChar     [47] G
+                            = NameChar     [5F] _
+                    = FieldFlags
+                        ByteData [01] => b[0<00><0> <0001>] => ByteAcc, NoLock, Preserve
+                    = FieldList
+                        Nothing | FieldElement FieldList
+                      = FieldElement
+                          NamedField | ReservedField | AccessField | ExtendedAccessField | ConnectField
+                        = NamedField
+                            NameSeg PkgLength
+                          = NameSeg
+                              LeadNameChar NameChar NameChar NameChar
+                            = LeadNameChar [44] D
+                            = NameChar     [42] B
+                            = NameChar     [47] G
+                            = NameChar     [42] B
+                          = PkgLength [08] = b[<00><00> 1000] => 0x08 => 8 bits
+                      = FieldList
+                          Nothing | FieldElement FieldList
+                        = Nothing
+  -- Method (DBUG) ---------------------------------------------------------------------------------------------------
+          = TermObj
+              Object | StatementOpcode | ExpressionOpcode
+              = Object
+                  NameSpaceModifierObj | NamedObj
+                = NamedObj
+                    DefBankField | DefCreateBitField | DefCreateByteField | DefCreateDWordField | DefCreateField | DefCreateQWordField | DefCreateWordField | DefDataRegion | DefDevice | DefEvent | DefExternal | DefField | DefIndexField | DefMethod | DefMutex | DefOpRegion | DefPowerRes | DefThermalZone
+                  = DefMethod
+                      MethodOp PkgLength NameString MethodFlags TermObj*
+                    = MethodOp [14]
+                    = PkgLength [2C] => b[<00>10 1100] => 44
+                    = NameString
+                        RootChar NamePath | PrefixPath NamePath
+                      = PrefixPath NamePath
+                        = PrefixPath
+                            Nothing | <'^' PrefixPath>
+                          = Nothing
+                          = NamePath
+                              NameSeg | DualNamePath | MultiNamePath | NullName
+                            = NameSeg
+                                LeadNameChar NameChar NameChar NameChar
+                              = LeadNameChar [44] D
+                              = NameChar     [42] B
+                              = NameChar     [55] U
+                              = NameChar     [47] G
+                    = MethodFlags
+                        ByteData [01] => b[<0000> <0><001>] => ArgCount=1, NotSerialized, SyncLevel=0
+    -- ToHexString (arg0, local0) -------------------------------------------------------------------------------------
+                    = TermObj
+                        Object | StatementOpcode | ExpressionOpcode
+                        = ExpressionOpcode
+                            DefAcquire | DefAdd | DefAnd | DefBuffer | DefConcat | DefConcatRes | DefCondRefOf | DefCopyObject | DefDecrement | DefDerefOf | DefDivide | DefFindSetLeftBit | DefFindSetRightBit | DefFromBCD | DefIncrement | DefIndex | DefLAnd | DefLEqual | DefLGreater | DefLGreaterEqual | DefLLess | DefLLessEqual | DefMid | DefLNot | DefLNotEqual | DefLoadTable | DefLOr | DefMatch | DefMod | DefMultiply | DefNAnd | DefNOr | DefNot | DefObjectType | DefOr | DefPackage | DefVarPackage | DefRefOf | DefShiftLeft | DefShiftRight | DefSizeOf | DefStore | DefSubtract | DefTimer | DefToBCD | DefToBuffer | DefToDecimalString | DefToHexString | DefToInteger | DefToString | DefWait | DefXOr | MethodInvocation
+                          = DefToHexString
+                              ToHexStringOp Operand Target
+                            = ToHexStringOp [0x98]
+                            = Operand
+                                TermArg => Integer
+                                  ExpressionOpcode | DataObject | ArgObj | LocalObj
+                                = ArgObj
+                                    Arg0Op | Arg1Op | Arg2Op | Arg3Op | Arg4Op | Arg5Op | Arg6Op
+                                  = Arg0Op [0x68]
+                            = Target
+                                SuperName | NullName
+                              = SuperName
+                                  SimpleName | DebugObj | ReferenceTypeOpcode
+                                = SimpleName
+                                    NameString | ArgObj | LocalObj
+                                  = LocalObj
+                                      Local0Op | Local1Op | Local2Op | Local3Op | Local4Op | Local5Op | Local6Op | Local7Op
+                                    = Local0Op [0x60]
+    -- ToBuffer (local0, local0) --------------------------------------------------------------------------------------
+                    = TermObj
+                        Object | StatementOpcode | ExpressionOpcode
+                        = ExpressionOpcode
+                            DefAcquire | DefAdd | DefAnd | DefBuffer | DefConcat | DefConcatRes | DefCondRefOf | DefCopyObject | DefDecrement | DefDerefOf | DefDivide | DefFindSetLeftBit | DefFindSetRightBit | DefFromBCD | DefIncrement | DefIndex | DefLAnd | DefLEqual | DefLGreater | DefLGreaterEqual | DefLLess | DefLLessEqual | DefMid | DefLNot | DefLNotEqual | DefLoadTable | DefLOr | DefMatch | DefMod | DefMultiply | DefNAnd | DefNOr | DefNot | DefObjectType | DefOr | DefPackage | DefVarPackage | DefRefOf | DefShiftLeft | DefShiftRight | DefSizeOf | DefStore | DefSubtract | DefTimer | DefToBCD | DefToBuffer | DefToDecimalString | DefToHexString | DefToInteger | DefToString | DefWait | DefXOr | MethodInvocation
+                          = DefToBuffer
+                              ToBufferOp Operand Target
+                            = ToBufferOp [0x96]
+                            = Operand
+                                TermArg => Integer
+                                  ExpressionOpcode | DataObject | ArgObj | LocalObj
+                                = LocalObj
+                                    Local0Op | Local1Op | Local2Op | Local3Op | Local4Op | Local5Op | Local6Op | Local7Op
+                                  = Local0Op [0x60]
+                            = Target
+                                SuperName | NullName
+                              = SuperName
+                                  SimpleName | DebugObj | ReferenceTypeOpcode
+                                = SimpleName
+                                    NameString | ArgObj | LocalObj
+                                  = LocalObj
+                                      Local0Op | Local1Op | Local2Op | Local3Op | Local4Op | Local5Op | Local6Op | Local7Op
+                                    = Local0Op [0x60]
+    -- Subtract (SizeOf(local0), 1, local1) ---------------------------------------------------------------------------
+                    = TermObj
+                        Object | StatementOpcode | ExpressionOpcode
+                        = ExpressionOpcode
+                            DefAcquire | DefAdd | DefAnd | DefBuffer | DefConcat | DefConcatRes | DefCondRefOf | DefCopyObject | DefDecrement | DefDerefOf | DefDivide | DefFindSetLeftBit | DefFindSetRightBit | DefFromBCD | DefIncrement | DefIndex | DefLAnd | DefLEqual | DefLGreater | DefLGreaterEqual | DefLLess | DefLLessEqual | DefMid | DefLNot | DefLNotEqual | DefLoadTable | DefLOr | DefMatch | DefMod | DefMultiply | DefNAnd | DefNOr | DefNot | DefObjectType | DefOr | DefPackage | DefVarPackage | DefRefOf | DefShiftLeft | DefShiftRight | DefSizeOf | DefStore | DefSubtract | DefTimer | DefToBCD | DefToBuffer | DefToDecimalString | DefToHexString | DefToInteger | DefToString | DefWait | DefXOr | MethodInvocation
+                          = DefSubtract
+                              SubtractOp Operand Operand Target
+                            = SubtractOp [0x74]
+                            = Operand
+                                TermArg => Integer
+                                  ExpressionOpcode | DataObject | ArgObj | LocalObj
+                                = ExpressionOpcode
+                                    DefAcquire | DefAdd | DefAnd | DefBuffer | DefConcat | DefConcatRes | DefCondRefOf | DefCopyObject | DefDecrement | DefDerefOf | DefDivide | DefFindSetLeftBit | DefFindSetRightBit | DefFromBCD | DefIncrement | DefIndex | DefLAnd | DefLEqual | DefLGreater | DefLGreaterEqual | DefLLess | DefLLessEqual | DefMid | DefLNot | DefLNotEqual | DefLoadTable | DefLOr | DefMatch | DefMod | DefMultiply | DefNAnd | DefNOr | DefNot | DefObjectType | DefOr | DefPackage | DefVarPackage | DefRefOf | DefShiftLeft | DefShiftRight | DefSizeOf | DefStore | DefSubtract | DefTimer | DefToBCD | DefToBuffer | DefToDecimalString | DefToHexString | DefToInteger | DefToString | DefWait | DefXOr | MethodInvocation
+      -- SizeOf (local0) ----------------------------------------------------------------------------------------------
+                                  = DefSizeOf
+                                      SizeOfOp SuperName
+                                    = SizeOfOp [0x87]
+                                    = SuperName
+                                        SimpleName | DebugObj | ReferenceTypeOpcode
+                                      = SimpleName
+                                          NameString | ArgObj | LocalObj
+                                        = LocalObj
+                                            Local0Op | Local1Op | Local2Op | Local3Op | Local4Op | Local5Op | Local6Op | Local7Op
+                                          = Local0Op [0x60]
+      -- 1 ------------------------------------------------------------------------------------------------------------
+                            = Operand
+                                TermArg => Integer
+                                  ExpressionOpcode | DataObject | ArgObj | LocalObj
+                                = DataObject
+                                    ComputationalData | DefPackage | DefVarPackage
+                                  = ComputationalData
+                                      ByteConst | WordConst | DWordConst | QWordConst | String | ConstObj | RevisionOp | DefBuffer
+                                    = ConstObj
+                                        ZeroOp | OneOp | OnesOp
+                                      = OneOp [01]
+      -- local1 -------------------------------------------------------------------------------------------------------
+                            = Target
+                                SuperName | NullName
+                              = SuperName
+                                  SimpleName | DebugObj | ReferenceTypeOpcode
+                                = SimpleName
+                                    NameString | ArgObj | LocalObj
+                                  = LocalObj
+                                      Local0Op | Local1Op | Local2Op | Local3Op | Local4Op | Local5Op | Local6Op | Local7Op
+                                    = Local1Op [0x61]
+    -- Store (0, local2) ----------------------------------------------------------------------------------------------
+                    = TermObj
+                        Object | StatementOpcode | ExpressionOpcode
+                        = ExpressionOpcode
+                            DefAcquire | DefAdd | DefAnd | DefBuffer | DefConcat | DefConcatRes | DefCondRefOf | DefCopyObject | DefDecrement | DefDerefOf | DefDivide | DefFindSetLeftBit | DefFindSetRightBit | DefFromBCD | DefIncrement | DefIndex | DefLAnd | DefLEqual | DefLGreater | DefLGreaterEqual | DefLLess | DefLLessEqual | DefMid | DefLNot | DefLNotEqual | DefLoadTable | DefLOr | DefMatch | DefMod | DefMultiply | DefNAnd | DefNOr | DefNot | DefObjectType | DefOr | DefPackage | DefVarPackage | DefRefOf | DefShiftLeft | DefShiftRight | DefSizeOf | DefStore | DefSubtract | DefTimer | DefToBCD | DefToBuffer | DefToDecimalString | DefToHexString | DefToInteger | DefToString | DefWait | DefXOr | MethodInvocation
+                          = DefStore
+                              StoreOp TermArg SuperName
+                            = StoreOp [0x70]
+                            = TermArg => Integer
+                                ExpressionOpcode | DataObject | ArgObj | LocalObj
+                              = DataObject
+                                  ComputationalData | DefPackage | DefVarPackage
+                                = ComputationalData
+                                    ByteConst | WordConst | DWordConst | QWordConst | String | ConstObj | RevisionOp | DefBuffer
+                                  = ConstObj
+                                      ZeroOp | OneOp | OnesOp
+                                    = ZeroOp [00]
+                            = SuperName
+                                SimpleName | DebugObj | ReferenceTypeOpcode
+                              = SimpleName
+                                  NameString | ArgObj | LocalObj
+                                = LocalObj
+                                    Local0Op | Local1Op | Local2Op | Local3Op | Local4Op | Local5Op | Local6Op | Local7Op
+                                  = Local2Op [0x62]
+    -- While (local2 < local1) ----------------------------------------------------------------------------------------
+                    = TermObj
+                        Object | StatementOpcode | ExpressionOpcode
+                        = StatementOpcode
+                            DefBreak | DefBreakPoint | DefContinue | DefFatal | DefIfElse | DefNoop | DefNotify | DefRelease | DefReset | DefReturn | DefSignal | DefSleep | DefStall | DefWhile
+                          = DefWhile
+                              WhileOp PkgLength Predicate TermObj*
+                            = WhileOp [0xA2]
+                            = PkgLength [0x10] => [0b<00><01 0000>] => 16 bytes
+                            = Predicate
+                                TermArg => Integer
+                                  ExpressionOpcode | DataObject | ArgObj | LocalObj
+                                = ExpressionOpcode
+                                    DefAcquire | DefAdd | DefAnd | DefBuffer | DefConcat | DefConcatRes | DefCondRefOf | DefCopyObject | DefDecrement | DefDerefOf | DefDivide | DefFindSetLeftBit | DefFindSetRightBit | DefFromBCD | DefIncrement | DefIndex | DefLAnd | DefLEqual | DefLGreater | DefLGreaterEqual | DefLLess | DefLLessEqual | DefMid | DefLNot | DefLNotEqual | DefLoadTable | DefLOr | DefMatch | DefMod | DefMultiply | DefNAnd | DefNOr | DefNot | DefObjectType | DefOr | DefPackage | DefVarPackage | DefRefOf | DefShiftLeft | DefShiftRight | DefSizeOf | DefStore | DefSubtract | DefTimer | DefToBCD | DefToBuffer | DefToDecimalString | DefToHexString | DefToInteger | DefToString | DefWait | DefXOr | MethodInvocation
+                                  = DefLLess
+                                      LlessOp Operand Operand
+                                    = LlessOp [0x95]
+                                    = Operand
+                                        TermArg => Integer
+                                          ExpressionOpcode | DataObject | ArgObj | LocalObj
+                                        = LocalObj
+                                            Local0Op | Local1Op | Local2Op | Local3Op | Local4Op | Local5Op | Local6Op | Local7Op
+                                          = Local2Op [0x62]                                      
+                                    = Operand
+                                        TermArg => Integer
+                                          ExpressionOpcode | DataObject | ArgObj | LocalObj
+                                        = LocalObj
+                                            Local0Op | Local1Op | Local2Op | Local3Op | Local4Op | Local5Op | Local6Op | Local7Op
+                                          = Local1Op [0x61]                                      
+      -- Store (DerefOf(Index(local0, local2)), "DBGB")----------------------------------------------------------------
+                            = TermObj
+                                Object | StatementOpcode | ExpressionOpcode
+                                = ExpressionOpcode
+                                    DefAcquire | DefAdd | DefAnd | DefBuffer | DefConcat | DefConcatRes | DefCondRefOf | DefCopyObject | DefDecrement | DefDerefOf | DefDivide | DefFindSetLeftBit | DefFindSetRightBit | DefFromBCD | DefIncrement | DefIndex | DefLAnd | DefLEqual | DefLGreater | DefLGreaterEqual | DefLLess | DefLLessEqual | DefMid | DefLNot | DefLNotEqual | DefLoadTable | DefLOr | DefMatch | DefMod | DefMultiply | DefNAnd | DefNOr | DefNot | DefObjectType | DefOr | DefPackage | DefVarPackage | DefRefOf | DefShiftLeft | DefShiftRight | DefSizeOf | DefStore | DefSubtract | DefTimer | DefToBCD | DefToBuffer | DefToDecimalString | DefToHexString | DefToInteger | DefToString | DefWait | DefXOr | MethodInvocation
+                                  = DefStore
+                                      StoreOp TermArg SuperName
+                                    = StoreOp [0x70]
+        -- DerefOf(Index(local0, local2)) -----------------------------------------------------------------------------
+                                    = TermArg => Integer
+                                        ExpressionOpcode | DataObject | ArgObj | LocalObj
+                                      = ExpressionOpcode
+                                          DefAcquire | DefAdd | DefAnd | DefBuffer | DefConcat | DefConcatRes | DefCondRefOf | DefCopyObject | DefDecrement | DefDerefOf | DefDivide | DefFindSetLeftBit | DefFindSetRightBit | DefFromBCD | DefIncrement | DefIndex | DefLAnd | DefLEqual | DefLGreater | DefLGreaterEqual | DefLLess | DefLLessEqual | DefMid | DefLNot | DefLNotEqual | DefLoadTable | DefLOr | DefMatch | DefMod | DefMultiply | DefNAnd | DefNOr | DefNot | DefObjectType | DefOr | DefPackage | DefVarPackage | DefRefOf | DefShiftLeft | DefShiftRight | DefSizeOf | DefStore | DefSubtract | DefTimer | DefToBCD | DefToBuffer | DefToDecimalString | DefToHexString | DefToInteger | DefToString | DefWait | DefXOr | MethodInvocation
+                                        = DefDerefOf
+                                            DerefOfOp ObjReference
+                                          = DerefOfOp [0x83]
+          -- Index(local0, local2) ------------------------------------------------------------------------------------
+                                          = ObjReference
+                                              TermArg => ObjectReference | String
+                                                ExpressionOpcode | DataObject | ArgObj | LocalObj
+                                              = ExpressionOpcode
+                                                  DefAcquire | DefAdd | DefAnd | DefBuffer | DefConcat | DefConcatRes | DefCondRefOf | DefCopyObject | DefDecrement | DefDerefOf | DefDivide | DefFindSetLeftBit | DefFindSetRightBit | DefFromBCD | DefIncrement | DefIndex | DefLAnd | DefLEqual | DefLGreater | DefLGreaterEqual | DefLLess | DefLLessEqual | DefMid | DefLNot | DefLNotEqual | DefLoadTable | DefLOr | DefMatch | DefMod | DefMultiply | DefNAnd | DefNOr | DefNot | DefObjectType | DefOr | DefPackage | DefVarPackage | DefRefOf | DefShiftLeft | DefShiftRight | DefSizeOf | DefStore | DefSubtract | DefTimer | DefToBCD | DefToBuffer | DefToDecimalString | DefToHexString | DefToInteger | DefToString | DefWait | DefXOr | MethodInvocation
+                                                = DefIndex
+                                                    IndexOp BuffPkgStrObj IndexValue Target
+                                                  = IndexOp [0x88]
+                                                  = BuffPkgStrObj
+                                                      TermArg => Buffer, Package, or String
+                                                        ExpressionOpcode | DataObject | ArgObj | LocalObj
+                                                      = LocalObj
+                                                          Local0Op | Local1Op | Local2Op | Local3Op | Local4Op | Local5Op | Local6Op | Local7Op
+                                                        = Local0Op [0x60]
+                                                  = IndexValue
+                                                      TermArg => Buffer, Package, or String
+                                                        ExpressionOpcode | DataObject | ArgObj | LocalObj
+                                                      = LocalObj
+                                                          Local0Op | Local1Op | Local2Op | Local3Op | Local4Op | Local5Op | Local6Op | Local7Op
+                                                        = Local2Op [0x62]
+                                                  = Target
+                                                      SuperName | NullName
+                                                    = NullName [0x00]
+        -- "DBGB" ---------------------------------------------------------------------------------------------------
+                                    = SuperName
+                                        SimpleName | DebugObj | ReferenceTypeOpcode
+                                      = SimpleName
+                                          NameString | ArgObj | LocalObj
+                                        = NameString
+                                            RootChar NamePath | PrefixPath NamePath
+                                          = PrefixPath NamePath
+                                            = PrefixPath
+                                                Nothing | <'^' PrefixPath>
+                                              = Nothing
+                                            = NamePath
+                                                NameSeg | DualNamePath | MultiNamePath | NullName
+                                              = NameSeg
+                                                  LeadNameChar NameChar NameChar NameChar
+                                                = LeadNameChar [44] D
+                                                = NameChar     [42] B
+                                                = NameChar     [47] G
+                                                = NameChar     [5F] B
+      -- Incrment (local2) --------------------------------------------------------------------------------------------
+                            = TermObj
+                                Object | StatementOpcode | ExpressionOpcode
+                                = ExpressionOpcode
+                                    DefAcquire | DefAdd | DefAnd | DefBuffer | DefConcat | DefConcatRes | DefCondRefOf | DefCopyObject | DefDecrement | DefDerefOf | DefDivide | DefFindSetLeftBit | DefFindSetRightBit | DefFromBCD | DefIncrement | DefIndex | DefLAnd | DefLEqual | DefLGreater | DefLGreaterEqual | DefLLess | DefLLessEqual | DefMid | DefLNot | DefLNotEqual | DefLoadTable | DefLOr | DefMatch | DefMod | DefMultiply | DefNAnd | DefNOr | DefNot | DefObjectType | DefOr | DefPackage | DefVarPackage | DefRefOf | DefShiftLeft | DefShiftRight | DefSizeOf | DefStore | DefSubtract | DefTimer | DefToBCD | DefToBuffer | DefToDecimalString | DefToHexString | DefToInteger | DefToString | DefWait | DefXOr | MethodInvocation
+                                  = DefIncrement
+                                      IncrementOp SuperName
+                                    = IncrementOp [0x75]
+                                    = SuperName
+                                        SimpleName | DebugObj | ReferenceTypeOpcode
+                                      = SimpleName
+                                          NameString | ArgObj | LocalObj
+                                        = LocalObj
+                                            Local0Op | Local1Op | Local2Op | Local3Op | Local4Op | Local5Op | Local6Op | Local7Op
+                                          = Local2Op [0x62]
+    -- Store (0x0A, "DBGB") -----------------------------------------------------------------------------------------
+                          = TermObj
+                              Object | StatementOpcode | ExpressionOpcode
+                              = ExpressionOpcode
+                                  DefAcquire | DefAdd | DefAnd | DefBuffer | DefConcat | DefConcatRes | DefCondRefOf | DefCopyObject | DefDecrement | DefDerefOf | DefDivide | DefFindSetLeftBit | DefFindSetRightBit | DefFromBCD | DefIncrement | DefIndex | DefLAnd | DefLEqual | DefLGreater | DefLGreaterEqual | DefLLess | DefLLessEqual | DefMid | DefLNot | DefLNotEqual | DefLoadTable | DefLOr | DefMatch | DefMod | DefMultiply | DefNAnd | DefNOr | DefNot | DefObjectType | DefOr | DefPackage | DefVarPackage | DefRefOf | DefShiftLeft | DefShiftRight | DefSizeOf | DefStore | DefSubtract | DefTimer | DefToBCD | DefToBuffer | DefToDecimalString | DefToHexString | DefToInteger | DefToString | DefWait | DefXOr | MethodInvocation
+                                = DefStore
+                                    StoreOp TermArg SuperName
+                                  = StoreOp [0x70]
+                                  = TermArg => Integer
+                                      ExpressionOpcode | DataObject | ArgObj | LocalObj
+                                      = DataObject
+                                          ComputationalData | DefPackage | DefVarPackage
+                                        = ComputationalData
+                                            ByteConst | WordConst | DWordConst | QWordConst | String | ConstObj | RevisionOp | DefBuffer
+                                          = ByteConst
+                                              BytePrefix ByteData
+                                            = BytePrefix [0x0A]
+                                            = ByteData [0x0A]
+                                  = SuperName
+                                      SimpleName | DebugObj | ReferenceTypeOpcode
+                                    = SimpleName
+                                        NameString | ArgObj | LocalObj
+                                      = NameString
+                                          RootChar NamePath | PrefixPath NamePath
+                                        = PrefixPath NamePath
+                                          = PrefixPath
+                                              Nothing | <'^' PrefixPath>
+                                            = Nothing
+                                          = NamePath
+                                              NameSeg | DualNamePath | MultiNamePath | NullName
+                                            = NameSeg
+                                                LeadNameChar NameChar NameChar NameChar
+                                              = LeadNameChar [44] D
+                                              = NameChar     [42] B
+                                              = NameChar     [47] G
+                                              = NameChar     [5F] B
+-- Scope (_SB) --------------------------------------------------------------------------------------------------------
+  = TermObj
+      Object | StatementOpcode | ExpressionOpcode
+    = Object
+        NameSpaceModifierObj | NamedObj
+      = NameSpaceModifierObj
+          DefAlias | DefName | DefScope
+        = DefScope
+            ScopeOp PkgLength NameString TermObj*
+          = ScopeOp [10]
+          = PkgLength [22] => b[<00><10 0010>] => 0x22 = 34 bytes
+          = NameString
+              RootChar NamePath | PrefixPath NamePath
+            = PrefixPath NamePath
+              = PrefixPath
+                  Nothing | <'^' PrefixPath>
+                = Nothing
+              = NamePath
+                  NameSeg | DualNamePath | MultiNamePath | NullName
+                = NameSeg
+                    LeadNameChar NameChar NameChar NameChar
+                  = LeadNameChar [5F] _
+                  = NameChar     [53] S
+                  = NameChar     [42] B
+                  = NameChar     [5F] _
+  -- Device (PCI0) ----------------------------------------------------------------------------------------------------
+          = TermObj
+              Object | StatementOpcode | ExpressionOpcode
+            = Object
+                NameSpaceModifierObj | NamedObj
+              = NamedObj
+                  DefBankField | DefCreateBitField | DefCreateByteField | DefCreateDWordField | DefCreateField | DefCreateQWordField | DefCreateWordField | DefDataRegion | DefDevice | DefEvent | DefExternal | DefField | DefIndexField | DefMethod | DefMutex | DefOpRegion | DefPowerRes | DefThermalZone
+                = DefDevice
+                    DeviceOp PkgLength NameString TermObj*
+                  = DeviceOp
+                      ExtOpPrefix 0x82
+                    = ExtOpPrefix [0x5B]
+                    = [0x82]
+                  = PkgLength [1B] = b[<00><01 1011>] = 0x1B = 27 bytes
+                  = NameString
+                      RootChar NamePath | PrefixPath NamePath
+                    = PrefixPath NamePath
+                      = PrefixPath
+                          Nothing | <'^' PrefixPath>
+                        = Nothing
+                      = NamePath
+                          NameSeg | DualNamePath | MultiNamePath | NullName
+                        = NameSeg
+                            LeadNameChar NameChar NameChar NameChar
+                          = LeadNameChar [50] P
+                          = NameChar     [43] C
+                          = NameChar     [49] I
+                          = NameChar     [30] 0
+    -- Name (_HID, "PNP0A03") -----------------------------------------------------------------------------------------
+                  = TermObj
+                      Object | StatementOpcode | ExpressionOpcode
+                    = Object
+                        NameSpaceModifierObj | NamedObj
+                      = NameSpaceModifierObj
+                          DefAlias | DefName | DefScope
+                        = DefName
+                            NameOp NameString DataRefObject
+                          = NameOp [0x08]
+                          = NameString
+                              RootChar NamePath | PrefixPath NamePath
+                            = PrefixPath NamePath
+                              = PrefixPath
+                                  Nothing | <'^' PrefixPath>
+                                = Nothing
+                              = NamePath
+                                  NameSeg | DualNamePath | MultiNamePath | NullName
+                                = NameSeg
+                                    LeadNameChar NameChar NameChar NameChar
+                                  = LeadNameChar [5F] _
+                                  = NameChar     [48] H
+                                  = NameChar     [49] I
+                                  = NameChar     [44] D
+                          = DataRefObject
+                              DataObject | ObjectReference
+                            = DataObject
+                                ComputationalData | DefPackage | DefVarPackage
+                              = ComputationalData
+                                  ByteConst | WordConst | DWordConst | QWordConst | String | ConstObj | RevisionOp | DefBuffer
+                                = DWordConst
+                                    DWordPrefix DWordData
+                                  = DWordPrefix [0C]
+                                  = DWordData 41 D0 0A 03 =  => b[0<100 00><01][<110><1 0000>][x0A x03] => "PNP0A03"
+    -- Name (_ADR, 0) -------------------------------------------------------------------------------------------------
+                  = TermObj
+                      Object | StatementOpcode | ExpressionOpcode
+                    = Object
+                        NameSpaceModifierObj | NamedObj
+                      = NameSpaceModifierObj
+                          DefAlias | DefName | DefScope
+                        = DefName
+                            NameOp NameString DataRefObject
+                          = NameOp [0x08]
+                          = NameString
+                              RootChar NamePath | PrefixPath NamePath
+                            = PrefixPath NamePath
+                              = PrefixPath
+                                  Nothing | <'^' PrefixPath>
+                                = Nothing
+                              = NamePath
+                                  NameSeg | DualNamePath | MultiNamePath | NullName
+                                = NameSeg
+                                    LeadNameChar NameChar NameChar NameChar
+                                  = LeadNameChar [5F] _
+                                  = NameChar     [41] A
+                                  = NameChar     [44] D
+                                  = NameChar     [52] R
+                          = DataRefObject
+                              DataObject | ObjectReference
+                            = DataObject
+                                ComputationalData | DefPackage | DefVarPackage
+                              = ComputationalData
+                                  ByteConst | WordConst | DWordConst | QWordConst | String | ConstObj | RevisionOp | DefBuffer
+                                = ConstObj
+                                    ZeroOp | OneOp | OnesOp
+                                  = ZeroOp [00]
+    -- Name (_UID, 0) -------------------------------------------------------------------------------------------------
+                  = TermObj
+                      Object | StatementOpcode | ExpressionOpcode
+                    = Object
+                        NameSpaceModifierObj | NamedObj
+                      = NameSpaceModifierObj
+                          DefAlias | DefName | DefScope
+                        = DefName
+                            NameOp NameString DataRefObject
+                          = NameOp [0x08]
+                          = NameString
+                              RootChar NamePath | PrefixPath NamePath
+                            = PrefixPath NamePath
+                              = PrefixPath
+                                  Nothing | <'^' PrefixPath>
+                                = Nothing
+                              = NamePath
+                                  NameSeg | DualNamePath | MultiNamePath | NullName
+                                = NameSeg
+                                    LeadNameChar NameChar NameChar NameChar
+                                  = LeadNameChar [5F] _
+                                  = NameChar     [55] U
+                                  = NameChar     [49] I
+                                  = NameChar     [44] D
+                          = DataRefObject
+                              DataObject | ObjectReference
+                            = DataObject
+                                ComputationalData | DefPackage | DefVarPackage
+                              = ComputationalData
+                                  ByteConst | WordConst | DWordConst | QWordConst | String | ConstObj | RevisionOp | DefBuffer
+                                = ConstObj
+                                    ZeroOp | OneOp | OnesOp
+                                  = ZeroOp [00]
+
+          ...
+
+  () _____ "\"   oprgn  D  B  G  _ io    0x402 1byte
+ [10 49 04 5C 00 5B 80 44 42 47 5F 01 0B 02 04 01
+  field     D  B  G  _     D  B  G  B 8b mth    D
+  5B 81 0B 44 42 47 5F 01 44 42 47 42 08 14 2C 44
+   B  U  G   tohx(arg0,loc0) tobuf(loc0,loc0) sub(sizeof(loc0), 1, loc1)
+  42 55 47 01 98 68 60 96 60 60 74 87 60 01 61 70
+  sto(0, loc2) while(loc2 < loc1) { sto(deref(index(loc0, loc2)), "DBGB")
+  00 62 A2 10 95 62 61 70 83 88 60 62 00 44 42 47
+     inc(loc2) } sto(0x0A, "DBGB")
+  42 75 62 70 0A 0A 44 42 47 42]
+
+                                () __ "_  S  B  _"
+                               [10 22 5F 53 42 5F
+    dev __  P  C  I  0
+  5B 82 1B 50 43 49 30
+                       nm  _  H  I  D   (PNP0A03)
+                       08 5F 48 49 44 0C 41 D0 0A
+  03
+     nm  _  A  D  R (0)
+     08 5F 41 44 52 00
+                       nm  _  U  I  D (0)
+                       08 5F 55 49 44 00]
+
+                                         () _____
+                                        [10 4D 08
+  "_  S  B  _"  dev _____  H  P  E  T
+  5F 53 42 5F 5B 82 45 08 48 50 45 54 
+                                      nm  _  H  I
+                                      08 5F 48 49
+   D   (PNP   01 03)
+  44 0C 41 D0 01 03
+                    nm  _  U  I  D(0)
+                    08 5F 55 49 44 00
+                                      oprgn  H  P
+                                      5B 80 48 50
+   T  M mem  off=fed00000    len=4
+  54 4D 00 0C 00 00 D0 FE 0B 00 04
+                                   field     H  P
+                                   5B 81 10 48 50
+   T  M     V  E  N  D 32  P  R  D  _ 32
+  54 4D 13 56 45 4E 44 20 50 52 44 5F 20
+                                         mth    _
+                                        {14 36 5F
+   S  T  A    sto V E  N  D loc0 st P  R  D  _ loc1 
+  53 54 41 00 70 56 45 4E 44 60 70 50 52 44 5F 61
+  shr(loc0,16,loc0) if(or(eq(loc0,0), eq(loc0,FFFF)),
+  7A 60 0A 10 60 A0 0C 91 93 60 00 93 60 0B FF FF
+  ret 0) if(or(eq(loc1,0), gt(loc1, 05F5E100)), ret
+  A4 00 A0 0E 91 93 61 00 94 61 0C 00 E1 F5 05 A4
+  0) ret 0F}
+  00 A4 0A 0F}
+              nm  _  C  R  S buf__ sz=14 32b-fixed-memory-range, length=9
+              08 5F 43 52 53 11 11 0A 0E 86 09 00
+  rw=0 base=0xfed00000 len=0x400;end-tag checksum=0
+  00 00 00 D0 FE 00 04 00 00 79 00]
+                                   () 38 dn "_  S
+                                  [10 26 2E 5F 53
+   B  _ .P  C  I  0" dev  26 "I  S  A _" nm "_  A
+  42 5F 50 43 49 30 5B 82 1A 49 53 41 5F 08 5F 41
+   D R"    0x10000     oprgn "P  4  0 C" pci off=0x60
+  44 52 0C 00 00 01 00 5B 80 50 34 30 43 02 0A 60
+  len=0x04
+  0A 04]
+        ()       mn=3  "_  S  B  _ .P  C  I  0 .I
+       [10 4E 17 2F 03 5F 53 42 5F 50 43 49 30 49
+   S  A  _" dev     "K  B  D _" 
+  53 41 5F<5B 82 34 4B 42 44 5F 08 5F 48 49 44 0C
+  41 D0 03 03 08 5F 53 54 41 0A 0F 08 5F 43 52 53
+  11 18 0A 15 47 01 60 00 60 00 01 01 47 01 64 00
+  64 00 01 01 22 02 00 79 00>5B 82 24 4D 4F 55 5F
+  08 5F 48 49 44 0C 41 D0 0F 13 08 5F 53 54 41 0A
+  0F 08 5F 43 52 53 11 08 0A 05 22 00 10 79 00 5B
+  82 41 08 46 44 43 30 08 5F 48 49 44 0C 41 D0 07
+  00 08 5F 43 52 53 11 1B 0A 18 47 01 F2 03 F2 03
+  00 04 47 01 F7 03 F7 03 00 01 22 40 00 2A 04 00
+        dev      "F  L  P A" nm "_  A  D R"  0 nm
+  79 00 5B 82 31 46 4C 50 41 08 5F 41 44 52 00 08
+  "_  F  D I" pkg(32)
+  5F 46 44 49 12 20 10 00 0A 05 0A 4F 0A 30 01 0A
+  AF 0A 02 0A 25 0A 02 0A 12 0A 1B 0A FF 0A 6C 0A
+  F6 0A 0F 0A 08 08 5F 46 44 45 11 17 0A 14 01 00
+  00 00 00 00 00 00 00 00 00 00 00 00 00 00 02 00
+  00 00 5B 82 32 4C 50 54 31 08 5F 48 49 44 0C 41
+  D0 04 00 08 5F 55 49 44 01 08 5F 53 54 41 0A 0F
+  08 5F 43 52 53 11 10 0A 0D 47 01 78 03 78 03 08
+  08 22 80 00 79 00 5B 82 32 43 4F 4D 31 08 5F 48
+  49 44 0C 41 D0 05 01 08 5F 55 49 44 01 08 5F 53
+  54 41 0A 0F 08 5F 43 52 53 11 10 0A 0D 47 01 F8
+  03 F8 03 00 08 22 10 00 79 00 5B 82 25 52 54 43
+  5F 08 5F 48 49 44 0C 41 D0 0B 00 08 5F 43 52 53
+  11 10 0A 0D 47 01 70 00 70 00 01 08 22 00 01 79
+  00]
+     () _____ dn "_  S  B  _ .P  C  I 0" oprgn "P
+    [10 4E 11 2E 5F 53 42 5F 50 43 49 30 5B 80 50
+   C  S T"                   field    "P  C  S T"
+  43 53 54 01 0B 00 AE 0A 08 5B 81 10 50 43 53 54
+                                   oprgn "S  E  J
+  43 50 43 49 55 20 50 43 49 44 20 5B 80 53 45 4A
+  _"                   field    "S  E  J _"    "B
+  5F 01 0B 08 AE 0A 04 5B 81 0B 53 45 4A 5F 43 42
+   0  E J"    oprgn "B  N  M R"
+  30 45 4A 20 5B 80 42 4E 4D 52 01 0B 10 AE 0A 08
+  field    "B  N  M R"    "B  N  U M"    "P  I  D
+  5B 81 10 42 4E 4D 52 43 42 4E 55 4D 20 50 49 44
+  X"    mutex "B  L  C K"    mth   "P  C  E J" 
+  58 20 5B 01 42 4C 43 4B 00{14 25 50 43 45 4A 02
+  acq   "B  L  C K" indef sto               sto shl
+  5B 23 42 4C 43 4B FF FF 70 68 42 4E 55 4D 70 79
+           "B  0  E J"                         mth
+  01 69 00 42 30 45 4A 5B 27 42 4C 43 4B A4 00}14
+    "A   I  D X"    acq   B   L  C  K       sto
+  2B 41 49 44 58 02 5B 23 42 4C 43 4B FF FF 70 68
+  "B  N  U M" sto shl        "P  I  D X" sto P  I
+  42 4E 55 4D 70 79 01 69 00 50 49 44 58 70 50 49
+   D  X    releae            ret   mth      "P  D
+  44 58 60 5B 27 42 4C 43 4B A4 60}14 44 06 50 44
+   S M"    if       eq a0 buf<size=16 ...uuid...
+  53 4D 0E A0 4C 05 93 68 11 13 0A 10 D0 37 C9 E5
+                                     >sto(A  I  D
+  53 35 7A 4D 91 17 EA 4D 19 C3 43 4D 70 41 49 44
+  X(a4,a5),l0)if __ eq(a2,0) if __ eq(a1,   2) if 
+  58 6C 6D 60 A0 23 93 6A 00 A0 19 93 69 0A 02 A0
+  __ not(or(eq(a0,0),eq(a0,0xFFFFFFFF)))
+  13 92 7D 93 60 00 93 60 0C FF FF FF FF 00 A4 11
+  03 01 81 A4 11 03 01 00 A1 17 A0 15 93 6A 0A 07
+  70 12 05 02 00 0D 00 61 70 60 88 61 00 00 A4 61}]
+
+ [10 4E 36 5F 53 42 5F 10 4B 0A 50 43 49 30 14 44
+  0A 5F 50 52 54 00 70 12 02 80 60 70 00 61 A2 42
+  09 95 61 0A 80 70 7A 61 0A 02 00 62 70 7B 72 61
+  62 00 0A 03 00 63 A0 10 93 63 00 70 12 09 04 00
+  00 4C 4E 4B 44 00 64 A0 24 93 63 01 A0 11 93 61
+  0A 04 70 12 09 04 00 00 4C 4E 4B 53 00 64 A1 0D
+  70 12 09 04 00 00 4C 4E 4B 41 00 64 A0 11 93 63
+  0A 02 70 12 09 04 00 00 4C 4E 4B 42 00 64 A0 11
+  93 63 0A 03 70 12 09 04 00 00 4C 4E 4B 43 00 64
+  70 7D 79 62 0A 10 00 0B FF FF 00 88 64 00 00 70
+  7B 61 0A 03 00 88 64 01 00 70 64 88 60 61 00 75
+  61 A4 60 5B 81 24 2F 03 50 43 49 30 49 53 41 5F
+  50 34 30 43 01 50 52 51 30 08 50 52 51 31 08 50
+  52 51 32 08 50 52 51 33 08 14 13 49 51 53 54 01
+  A0 09 7B 0A 80 68 00 A4 0A 09 A4 0A 0B 14 36 49
+  51 43 52 09 08 50 52 52 30 11 0E 0A 0B 89 06 00
+  09 01 00 00 00 00 79 00 8A 50 52 52 30 0A 05 50
+  52 52 49 A0 0B 95 68 0A 80 70 68 50 52 52 49 A4
+  50 52 52 30 5B 82 4C 07 4C 4E 4B 41 08 5F 48 49
+  44 0C 41 D0 0C 0F 08 5F 55 49 44 00 08 5F 50 52
+  53 11 16 0A 13 89 0E 00 09 03 05 00 00 00 0A 00
+  00 00 0B 00 00 00 79 00 14 0F 5F 53 54 41 00 A4
+  49 51 53 54 50 52 51 30 14 11 5F 44 49 53 00 7D
+  50 52 51 30 0A 80 50 52 51 30 14 0F 5F 43 52 53
+  00 A4 49 51 43 52 50 52 51 30 14 17 5F 53 52 53
+  01 8A 68 0A 05 50 52 52 49 70 50 52 52 49 50 52
+  51 30 5B 82 4C 07 4C 4E 4B 42 08 5F 48 49 44 0C
+  41 D0 0C 0F 08 5F 55 49 44 01 08 5F 50 52 53 11
+  16 0A 13 89 0E 00 09 03 05 00 00 00 0A 00 00 00
+  0B 00 00 00 79 00 14 0F 5F 53 54 41 00 A4 49 51
+  53 54 50 52 51 31 14 11 5F 44 49 53 00 7D 50 52
+  51 31 0A 80 50 52 51 31 14 0F 5F 43 52 53 00 A4
+  49 51 43 52 50 52 51 31 14 17 5F 53 52 53 01 8A
+  68 0A 05 50 52 52 49 70 50 52 52 49 50 52 51 31
+  5B 82 4D 07 4C 4E 4B 43 08 5F 48 49 44 0C 41 D0
+  0C 0F 08 5F 55 49 44 0A 02 08 5F 50 52 53 11 16
+  0A 13 89 0E 00 09 03 05 00 00 00 0A 00 00 00 0B
+  00 00 00 79 00 14 0F 5F 53 54 41 00 A4 49 51 53
+  54 50 52 51 32 14 11 5F 44 49 53 00 7D 50 52 51
+  32 0A 80 50 52 51 32 14 0F 5F 43 52 53 00 A4 49
+  51 43 52 50 52 51 32 14 17 5F 53 52 53 01 8A 68
+  0A 05 50 52 52 49 70 50 52 52 49 50 52 51 32 5B
+  82 4D 07 4C 4E 4B 44 08 5F 48 49 44 0C 41 D0 0C
+  0F 08 5F 55 49 44 0A 03 08 5F 50 52 53 11 16 0A
+  13 89 0E 00 09 03 05 00 00 00 0A 00 00 00 0B 00
+  00 00 79 00 14 0F 5F 53 54 41 00 A4 49 51 53 54
+  50 52 51 33 14 11 5F 44 49 53 00 7D 50 52 51 33
+  0A 80 50 52 51 33 14 0F 5F 43 52 53 00 A4 49 51
+  43 52 50 52 51 33 14 17 5F 53 52 53 01 8A 68 0A
+  05 50 52 52 49 70 50 52 52 49 50 52 51 33 5B 82
+  4F 04 4C 4E 4B 53 08 5F 48 49 44 0C 41 D0 0C 0F
+  08 5F 55 49 44 0A 04 08 5F 50 52 53 11 0E 0A 0B
+  89 06 00 09 01 09 00 00 00 79 00 14 09 5F 53 54
+  41 00 A4 0A 0B 14 06 5F 44 49 53 00 14 0B 5F 43
+  52 53 00 A4 5F 50 52 53 14 06 5F 53 52 53 01]
+
+                                              [10
+  4F 3E 5F 53 42 5F 5B 82 48 0A 5C 2F 03 5F 53 42
+  5F 50 43 49 30 50 52 45 53 08 5F 48 49 44 0C 41
+  D0 0A 06 08 5F 55 49 44 0D 43 50 55 20 48 6F 74
+  70 6C 75 67 20 72 65 73 6F 75 72 63 65 73 00 5B
+  01 43 50 4C 4B 00 08 5F 43 52 53 11 0D 0A 0A 47
+  01 00 AF 00 AF 01 0C 79 00 5B 80 50 52 53 54 01
+  0B 00 AF 0A 0C 5B 81 28 50 52 53 54 41 00 20 43
+  50 45 4E 01 43 49 4E 53 01 43 52 4D 56 01 43 45
+  4A 30 01 43 45 4A 46 01 00 03 43 43 4D 44 08 5B
+  81 12 50 52 53 54 03 43 53 45 4C 20 00 20 43 44
+  41 54 20 14 0C 5F 49 4E 49 08 70 00 43 53 45 4C
+  5B 82 4D 33 5C 2E 5F 53 42 5F 43 50 55 53 08 5F
+  48 49 44 0D 41 43 50 49 30 30 31 30 00 08 5F 43
+  49 44 0C 41 D0 0A 05 14 11 43 54 46 59 02 A0 0A
+  93 68 00 86 43 30 30 30 69 14 48 06 43 53 54 41
+  09 5B 23 5C 2F 04 5F 53 42 5F 50 43 49 30 50 52
+  45 53 43 50 4C 4B FF FF 70 68 5C 2F 04 5F 53 42
+  5F 50 43 49 30 50 52 45 53 43 53 45 4C 70 00 60
+  A0 1A 93 5C 2F 04 5F 53 42 5F 50 43 49 30 50 52
+  45 53 43 50 45 4E 01 70 0A 0F 60 5B 27 5C 2F 04
+  5F 53 42 5F 50 43 49 30 50 52 45 53 43 50 4C 4B
+  A4 60 14 4D 05 43 45 4A 30 09 5B 23 5C 2F 04 5F
+  53 42 5F 50 43 49 30 50 52 45 53 43 50 4C 4B FF
+  FF 70 68 5C 2F 04 5F 53 42 5F 50 43 49 30 50 52
+  45 53 43 53 45 4C 70 01 5C 2F 04 5F 53 42 5F 50
+  43 49 30 50 52 45 53 43 45 4A 30 5B 27 5C 2F 04
+  5F 53 42 5F 50 43 49 30 50 52 45 53 43 50 4C 4B
+  14 46 16 43 53 43 4E 08 5B 23 5C 2F 04 5F 53 42
+  5F 50 43 49 30 50 52 45 53 43 50 4C 4B FF FF 08
+   C  N  E  W 
+  43 4E 45 57 12 02 FF 70 00 63 70 01 64 A2 44 12
+  93 64 01 70 00 64 70 01 60 70 00 61 A2 4C 0C 90
+  93 60 01 95 63 01 70 00 60 70 63 5C 2F 04 5F 53
+  42 5F 50 43 49 30 50 52 45 53 43 53 45 4C 70 00
+  5C 2F 04 5F 53 42 5F 50 43 49 30 50 52 45 53 43
+  43 4D 44 A0 17 95 5C 2F 04 5F 53 42 5F 50 43 49
+  30 50 52 45 53 43 44 41 54 63 A5 A0 09 93 61 0A
+  FF 70 01 64 A5 70 5C 2F 04 5F 53 42 5F 50 43 49
+  30 50 52 45 53 43 44 41 54 63 A0 24 93 5C 2F 04
+  5F 53 42 5F 50 43 49 30 50 52 45 53 43 49 4E 53
+     sto(l3,idx(CNEW,     l1)   inc   sto(1,a0) else
+  01 70 63 88 43 4E 45 57 61 00 75 61 70 01 60 A1
+
+  37 A0 35 93 5C 2F 04 5F 53 42 5F 50 43 49 30 50
+  52 45 53 43 52 4D 56 01 43 54 46 59 63 0A 03 70
+  01 5C 2F 04 5F 53 42 5F 50 43 49 30 50 52 45 53
+  43 52 4D 56 70 01 60 75 63 70 00 62 A2 45 04 95
+  62 61 70 83 88 43 4E 45 57 62 00 63 43 54 46 59
+  63 01 70 63 5B 31 70 63 5C 2F 04 5F 53 42 5F 50
+  43 49 30 50 52 45 53 43 53 45 4C 70 01 5C 2F 04
+  5F 53 42 5F 50 43 49 30 50 52 45 53 43 49 4E 53
+  75 62 5B 27 5C 2F 04 5F 53 42 5F 50 43 49 30 50
+                       mth       C  O  S  T    acq
+  52 45 53 43 50 4C 4B{14 4D 09 43 4F 53 54 0C 5B
+      \       ___________ ___________ ___________
+  23 5C 2F 04 5F 53 42 5F 50 43 49 30 50 52 45 53
+  ___________ tmout sto 
+  43 50 4C 4B FF FF 70 68 5C 2F 04 5F 53 42 5F 50
+                                   sto
+  43 49 30 50 52 45 53 43 53 45 4C 70 01 5C 2F 04
+  5F 53 42 5F 50 43 49 30 50 52 45 53 43 43 4D 44
+  sto
+  70 69 5C 2F 04 5F 53 42 5F 50 43 49 30 50 52 45
+                 sto
+  53 43 44 41 54 70 0A 02 5C 2F 04 5F 53 42 5F 50
+                                   sto
+  43 49 30 50 52 45 53 43 43 4D 44 70 6A 5C 2F 04
+  5F 53 42 5F 50 43 49 30 50 52 45 53 43 44 41 54
+  release\       ___________ ___________ ________
+  5B 27 5C 2F 04 5F 53 42 5F 50 43 49 30 50 52 45
+  __ ___________ proc
+  53 43 50 4C 4B}5B 83 38 43 30 30 30 00 00 00 00
+  00 00 14 0C 5F 53 54 41 08 A4 43 53 54 41 00 08
+  5F 4D 41 54 11 0B 0A 08 00 08 00 00 01 00 00 00
+  mth    _  O  S  T    C   O  S  T 
+  14 0E 5F 4F 53 54 0B 43 4F 53 54 00 68 69 6A 14
+  1B 5C 2E 5F 47 50 45 5F 45 30 32 00 5C 2F 03 5F
+  53 42 5F 43 50 55 53 43 53 43 4E 10 4F 04 5F 47
+  50 45 08 5F 48 49 44 0D 41 43 50 49 30 30 30 36
+  00 14 39 5F 45 30 31 00 5B 23 5C 2F 03 5F 53 42
+  5F 50 43 49 30 42 4C 43 4B FF FF 5C 2F 03 5F 53
+  42 5F 50 43 49 30 50 43 4E 54 5B 27 5C 2F 03 5F
+  53 42 5F 50 43 49 30 42 4C 43 4B 10 43 14 5C 2E
+  5F 53 42 5F 50 43 49 30 08 5F 43 52 53 11 40 0A
+  0A 9C 88 0D 00 02 0C 00 00 00 00 00 FF 00 00 00
+  00 01 47 01 F8 0C F8 0C 01 08 88 0D 00 01 0C 03
+  00 00 00 00 F7 0C 00 00 F8 0C 88 0D 00 01 0C 03
+  00 00 00 0D FF FF 00 00 00 F3 87 17 00 00 0C 03
+  00 00 00 00 00 00 0A 00 FF FF 0B 00 00 00 00 00
+  00 00 02 00 87 17 00 00 0C 01 00 00 00 00 00 00
+  00 08 FF FF BF FE 00 00 00 00 00 00 C0 F6 8A 2B
+  00 00 0C 03 00 00 00 00 00 00 00 00 00 00 00 00
+  01 00 00 00 FF FF FF 7F 01 00 00 00 00 00 00 00
+  00 00 00 00 00 00 00 80 00 00 00 00 79 00 5B 82
+  43 04 47 50 45 30 08 5F 48 49 44 0D 50 4E 50 30
+  41 30 36 00 08 5F 55 49 44 0D 47 50 45 30 20 72
+  65 73 6F 75 72 63 65 73 00 08 5F 53 54 41 0A 0B
+  08 5F 43 52 53 11 0D 0A 0A 47 01 E0 AF E0 AF 01
+  04 79 00 5B 82 4A 04 50 48 50 52 08 5F 48 49 44
+  0D 50 4E 50 30 41 30 36 00 08 5F 55 49 44 0D 50
+  43 49 20 48 6F 74 70 6C 75 67 20 72 65 73 6F 75
+  72 63 65 73 00 08 5F 53 54 41 0A 0B 08 5F 43 52
+  53 11 0D 0A 0A 47 01 00 AE 00 AE 01 18 79 00 10
+  29 5C 00 08 5F 53 33 5F 12 06 04 01 01 00 00 08
+  5F 53 34 5F 12 08 04 0A 02 0A 02 00 00 08 5F 53
+  35 5F 12 06 04 00 00 00 00 10 3B 5C 2E 5F 53 42
+  5F 50 43 49 30 5B 82 2E 46 57 43 46 08 5F 48 49
+  44 0D 51 45 4D 55 30 30 30 32 00 08 5F 53 54 41
+  0A 0B 08 5F 43 52 53 11 0D 0A 0A 47 01 10 05 10
+                 
+  05 01 0C 79 00 10 48 A1 5C 5F 53 42 5F 10 40 A1
+  50 43 49 30 08 42 53 45 4C 00 5B 82 29 53 30 30
+  5F 08 5F 41 44 52 00 08 5F 53 55 4E 00 14 17 5F
+  44 53 4D 0C A4 50 44 53 4D 68 69 6A 6B 42 53 45
+  4C 5F 53 55 4E 5B 82 4A 04 53 31 30 5F 08 5F 41
+  44 52 0C 00 00 02 00 08 5F 53 55 4E 0A 02 14 17
+  5F 44 53 4D 0C A4 50 44 53 4D 68 69 6A 6B 42 53
+  45 4C 5F 53 55 4E 14 08 5F 53 31 44 00 A4 00 14
+                          mth    _  S  3  D    ret
+  08 5F 53 32 44 00 A4 00 14 08 5F 53 33 44 00 A4
+     dev len=0x42 S  1  8  _ nm  _  S  U  N
+  00
+  
+    <5B 82 42 04 53 31 38 5F 08 5F 53 55 4E 0A 03
+  08 5F 41 44 52 0C 00 00 03 00 14 12 5F 45 4A 30
+  01 50 43 45 4A 42 53 45 4C 5F 53 55 4E 14 17 5F
+  44 53 4D 0C A4 50 44 53 4D 68 69 6A 6B 42 53 45
+  4C 5F 53 55 4E>5B 82 42 04 53 32 30 5F 08 5F 53
+  55 4E 0A 04 08 5F 41 44 52 0C 00 00 04 00 14 12
+  5F 45 4A 30 01 50 43 45 4A 42 53 45 4C 5F 53 55
+  4E 14 17 5F 44 53 4D 0C A4 50 44 53 4D 68 69 6A
+  6B 42 53 45 4C 5F 53 55 4E 5B 82 42 04 53 32 38
+  5F 08 5F 53 55 4E 0A 05 08 5F 41 44 52 0C 00 00
+  05 00 14 12 5F 45 4A 30 01 50 43 45 4A 42 53 45
+  4C 5F 53 55 4E 14 17 5F 44 53 4D 0C A4 50 44 53
+  4D 68 69 6A 6B 42 53 45 4C 5F 53 55 4E 5B 82 42
+  04 53 33 30 5F 08 5F 53 55 4E 0A 06 08 5F 41 44
+  52 0C 00 00 06 00 14 12 5F 45 4A 30 01 50 43 45
+  4A 42 53 45 4C 5F 53 55 4E 14 17 5F 44 53 4D 0C
+  A4 50 44 53 4D 68 69 6A 6B 42 53 45 4C 5F 53 55
+  4E 5B 82 42 04 53 33 38 5F 08 5F 53 55 4E 0A 07
+  08 5F 41 44 52 0C 00 00 07 00 14 12 5F 45 4A 30
+  01 50 43 45 4A 42 53 45 4C 5F 53 55 4E 14 17 5F
+  44 53 4D 0C A4 50 44 53 4D 68 69 6A 6B 42 53 45
+  4C 5F 53 55 4E 5B 82 42 04 53 34 30 5F 08 5F 53
+  55 4E 0A 08 08 5F 41 44 52 0C 00 00 08 00 14 12
+  5F 45 4A 30 01 50 43 45 4A 42 53 45 4C 5F 53 55
+  4E 14 17 5F 44 53 4D 0C A4 50 44 53 4D 68 69 6A
+  6B 42 53 45 4C 5F 53 55 4E 5B 82 42 04 53 34 38
+  5F 08 5F 53 55 4E 0A 09 08 5F 41 44 52 0C 00 00
+  09 00 14 12 5F 45 4A 30 01 50 43 45 4A 42 53 45
+  4C 5F 53 55 4E 14 17 5F 44 53 4D 0C A4 50 44 53
+  4D 68 69 6A 6B 42 53 45 4C 5F 53 55 4E 5B 82 42
+  04 53 35 30 5F 08 5F 53 55 4E 0A 0A 08 5F 41 44
+  52 0C 00 00 0A 00 14 12 5F 45 4A 30 01 50 43 45
+  4A 42 53 45 4C 5F 53 55 4E 14 17 5F 44 53 4D 0C
+  A4 50 44 53 4D 68 69 6A 6B 42 53 45 4C 5F 53 55
+  4E 5B 82 42 04 53 35 38 5F 08 5F 53 55 4E 0A 0B
+  08 5F 41 44 52 0C 00 00 0B 00 14 12 5F 45 4A 30
+  01 50 43 45 4A 42 53 45 4C 5F 53 55 4E 14 17 5F
+  44 53 4D 0C A4 50 44 53 4D 68 69 6A 6B 42 53 45
+  4C 5F 53 55 4E 5B 82 42 04 53 36 30 5F 08 5F 53
+  55 4E 0A 0C 08 5F 41 44 52 0C 00 00 0C 00 14 12
+  5F 45 4A 30 01 50 43 45 4A 42 53 45 4C 5F 53 55
+  4E 14 17 5F 44 53 4D 0C A4 50 44 53 4D 68 69 6A
+  6B 42 53 45 4C 5F 53 55 4E 5B 82 42 04 53 36 38
+  5F 08 5F 53 55 4E 0A 0D 08 5F 41 44 52 0C 00 00
+  0D 00 14 12 5F 45 4A 30 01 50 43 45 4A 42 53 45
+  4C 5F 53 55 4E 14 17 5F 44 53 4D 0C A4 50 44 53
+  4D 68 69 6A 6B 42 53 45 4C 5F 53 55 4E 5B 82 42
+  04 53 37 30 5F 08 5F 53 55 4E 0A 0E 08 5F 41 44
+  52 0C 00 00 0E 00 14 12 5F 45 4A 30 01 50 43 45
+  4A 42 53 45 4C 5F 53 55 4E 14 17 5F 44 53 4D 0C
+  A4 50 44 53 4D 68 69 6A 6B 42 53 45 4C 5F 53 55
+  4E 5B 82 42 04 53 37 38 5F 08 5F 53 55 4E 0A 0F
+  08 5F 41 44 52 0C 00 00 0F 00 14 12 5F 45 4A 30
+  01 50 43 45 4A 42 53 45 4C 5F 53 55 4E 14 17 5F
+  44 53 4D 0C A4 50 44 53 4D 68 69 6A 6B 42 53 45
+  4C 5F 53 55 4E 5B 82 42 04 53 38 30 5F 08 5F 53
+  55 4E 0A 10 08 5F 41 44 52 0C 00 00 10 00 14 12
+  5F 45 4A 30 01 50 43 45 4A 42 53 45 4C 5F 53 55
+  4E 14 17 5F 44 53 4D 0C A4 50 44 53 4D 68 69 6A
+  6B 42 53 45 4C 5F 53 55 4E 5B 82 42 04 53 38 38
+  5F 08 5F 53 55 4E 0A 11 08 5F 41 44 52 0C 00 00
+  11 00 14 12 5F 45 4A 30 01 50 43 45 4A 42 53 45
+  4C 5F 53 55 4E 14 17 5F 44 53 4D 0C A4 50 44 53
+  4D 68 69 6A 6B 42 53 45 4C 5F 53 55 4E 5B 82 42
+  04 53 39 30 5F 08 5F 53 55 4E 0A 12 08 5F 41 44
+  52 0C 00 00 12 00 14 12 5F 45 4A 30 01 50 43 45
+  4A 42 53 45 4C 5F 53 55 4E 14 17 5F 44 53 4D 0C
+  A4 50 44 53 4D 68 69 6A 6B 42 53 45 4C 5F 53 55
+  4E 5B 82 42 04 53 39 38 5F 08 5F 53 55 4E 0A 13
+  08 5F 41 44 52 0C 00 00 13 00 14 12 5F 45 4A 30
+  01 50 43 45 4A 42 53 45 4C 5F 53 55 4E 14 17 5F
+  44 53 4D 0C A4 50 44 53 4D 68 69 6A 6B 42 53 45
+  4C 5F 53 55 4E 5B 82 42 04 53 41 30 5F 08 5F 53
+  55 4E 0A 14 08 5F 41 44 52 0C 00 00 14 00 14 12
+  5F 45 4A 30 01 50 43 45 4A 42 53 45 4C 5F 53 55
+  4E 14 17 5F 44 53 4D 0C A4 50 44 53 4D 68 69 6A
+  6B 42 53 45 4C 5F 53 55 4E 5B 82 42 04 53 41 38
+  5F 08 5F 53 55 4E 0A 15 08 5F 41 44 52 0C 00 00
+  15 00 14 12 5F 45 4A 30 01 50 43 45 4A 42 53 45
+  4C 5F 53 55 4E 14 17 5F 44 53 4D 0C A4 50 44 53
+  4D 68 69 6A 6B 42 53 45 4C 5F 53 55 4E 5B 82 42
+  04 53 42 30 5F 08 5F 53 55 4E 0A 16 08 5F 41 44
+  52 0C 00 00 16 00 14 12 5F 45 4A 30 01 50 43 45
+  4A 42 53 45 4C 5F 53 55 4E 14 17 5F 44 53 4D 0C
+  A4 50 44 53 4D 68 69 6A 6B 42 53 45 4C 5F 53 55
+  4E 5B 82 42 04 53 42 38 5F 08 5F 53 55 4E 0A 17
+  08 5F 41 44 52 0C 00 00 17 00 14 12 5F 45 4A 30
+  01 50 43 45 4A 42 53 45 4C 5F 53 55 4E 14 17 5F
+  44 53 4D 0C A4 50 44 53 4D 68 69 6A 6B 42 53 45
+  4C 5F 53 55 4E 5B 82 42 04 53 43 30 5F 08 5F 53
+  55 4E 0A 18 08 5F 41 44 52 0C 00 00 18 00 14 12
+  5F 45 4A 30 01 50 43 45 4A 42 53 45 4C 5F 53 55
+  4E 14 17 5F 44 53 4D 0C A4 50 44 53 4D 68 69 6A
+  6B 42 53 45 4C 5F 53 55 4E 5B 82 42 04 53 43 38
+  5F 08 5F 53 55 4E 0A 19 08 5F 41 44 52 0C 00 00
+  19 00 14 12 5F 45 4A 30 01 50 43 45 4A 42 53 45
+  4C 5F 53 55 4E 14 17 5F 44 53 4D 0C A4 50 44 53
+  4D 68 69 6A 6B 42 53 45 4C 5F 53 55 4E 5B 82 42
+  04 53 44 30 5F 08 5F 53 55 4E 0A 1A 08 5F 41 44
+  52 0C 00 00 1A 00 14 12 5F 45 4A 30 01 50 43 45
+  4A 42 53 45 4C 5F 53 55 4E 14 17 5F 44 53 4D 0C
+  A4 50 44 53 4D 68 69 6A 6B 42 53 45 4C 5F 53 55
+  4E 5B 82 42 04 53 44 38 5F 08 5F 53 55 4E 0A 1B
+  08 5F 41 44 52 0C 00 00 1B 00 14 12 5F 45 4A 30
+  01 50 43 45 4A 42 53 45 4C 5F 53 55 4E 14 17 5F
+  44 53 4D 0C A4 50 44 53 4D 68 69 6A 6B 42 53 45
+  4C 5F 53 55 4E 5B 82 42 04 53 45 30 5F 08 5F 53
+  55 4E 0A 1C 08 5F 41 44 52 0C 00 00 1C 00 14 12
+  5F 45 4A 30 01 50 43 45 4A 42 53 45 4C 5F 53 55
+  4E 14 17 5F 44 53 4D 0C A4 50 44 53 4D 68 69 6A
+  6B 42 53 45 4C 5F 53 55 4E 5B 82 42 04 53 45 38
+  5F 08 5F 53 55 4E 0A 1D 08 5F 41 44 52 0C 00 00
+  1D 00 14 12 5F 45 4A 30 01 50 43 45 4A 42 53 45
+  4C 5F 53 55 4E 14 17 5F 44 53 4D 0C A4 50 44 53
+  4D 68 69 6A 6B 42 53 45 4C 5F 53 55 4E 5B 82 42
+  04 53 46 30 5F 08 5F 53 55 4E 0A 1E 08 5F 41 44
+  52 0C 00 00 1E 00 14 12 5F 45 4A 30 01 50 43 45
+  4A 42 53 45 4C 5F 53 55 4E 14 17 5F 44 53 4D 0C
+  A4 50 44 53 4D 68 69 6A 6B 42 53 45 4C 5F 53 55
+  4E 5B 82 42 04 53 46 38 5F 08 5F 53 55 4E 0A 1F
+  08 5F 41 44 52 0C 00 00 1F 00 14 12 5F 45 4A 30
+  01 50 43 45 4A 42 53 45 4C 5F 53 55 4E 14 17 5F
+  44 53 4D 0C A4 50 44 53 4D 68 69 6A 6B 42 53 45
+  4C 5F 53 55 4E 14 48 1B 44 56 4E 54 02 A0 0C 7B
+  68 0A 08 00 86 53 31 38 5F 69 A0 0C 7B 68 0A 10
+  00 86 53 32 30 5F 69 A0 0C 7B 68 0A 20 00 86 53
+  32 38 5F 69 A0 0C 7B 68 0A 40 00 86 53 33 30 5F
+  69 A0 0C 7B 68 0A 80 00 86 53 33 38 5F 69 A0 0D
+  7B 68 0B 00 01 00 86 53 34 30 5F 69 A0 0D 7B 68
+  0B 00 02 00 86 53 34 38 5F 69 A0 0D 7B 68 0B 00
+  04 00 86 53 35 30 5F 69 A0 0D 7B 68 0B 00 08 00
+  86 53 35 38 5F 69 A0 0D 7B 68 0B 00 10 00 86 53
+  36 30 5F 69 A0 0D 7B 68 0B 00 20 00 86 53 36 38
+  5F 69 A0 0D 7B 68 0B 00 40 00 86 53 37 30 5F 69
+  A0 0D 7B 68 0B 00 80 00 86 53 37 38 5F 69 A0 0F
+  7B 68 0C 00 00 01 00 00 86 53 38 30 5F 69 A0 0F
+  7B 68 0C 00 00 02 00 00 86 53 38 38 5F 69 A0 0F
+  7B 68 0C 00 00 04 00 00 86 53 39 30 5F 69 A0 0F
+  7B 68 0C 00 00 08 00 00 86 53 39 38 5F 69 A0 0F
+  7B 68 0C 00 00 10 00 00 86 53 41 30 5F 69 A0 0F
+  7B 68 0C 00 00 20 00 00 86 53 41 38 5F 69 A0 0F
+  7B 68 0C 00 00 40 00 00 86 53 42 30 5F 69 A0 0F
+  7B 68 0C 00 00 80 00 00 86 53 42 38 5F 69 A0 0F
+  7B 68 0C 00 00 00 01 00 86 53 43 30 5F 69 A0 0F
+  7B 68 0C 00 00 00 02 00 86 53 43 38 5F 69 A0 0F
+  7B 68 0C 00 00 00 04 00 86 53 44 30 5F 69 A0 0F
+  7B 68 0C 00 00 00 08 00 86 53 44 38 5F 69 A0 0F
+  7B 68 0C 00 00 00 10 00 86 53 45 30 5F 69 A0 0F
+  7B 68 0C 00 00 00 20 00 86 53 45 38 5F 69 A0 0F
+  7B 68 0C 00 00 00 40 00 86 53 46 30 5F 69 A0 0F
+  7B 68 0C 00 00 00 80 00 86 53 46 38 5F 69 14 1F
+  50 43 4E 54 00 70 00 42 4E 55 4D 44 56 4E 54 50
+  43 49 55 01 44 56 4E 54 50 43 49 44 0A 03
