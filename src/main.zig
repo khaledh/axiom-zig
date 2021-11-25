@@ -11,7 +11,7 @@ const print = io.print;
 const println = io.println;
 const printGuid = io.printGuid;
 const dumpHex = io.dumpHex;
-const aml = @import("acpi/aml.zig");
+const aml = @import("acpi/amlparser.zig");
 
 
 pub fn main() usize {
@@ -195,7 +195,8 @@ fn getConfigurationTable() void {
         println("  - Definition Block: {} bytes (AML encoded)", .{aml_block_len});
 
         const aml_block = @intToPtr([*]const u8, @ptrToInt(dsdt) + 36);
-        _ = aml.parse(aml_block[0..aml_block_len]);
+        var aml_parser = aml.AmlParser().init();
+        aml_parser.parse(aml_block[0..aml_block_len]);
 
         // println("", .{});
         // println("  ### MADT (Multiple APIC Description Table) ###", .{});
@@ -364,7 +365,7 @@ fn halt() noreturn {
 
 fn shutdown() noreturn {
     println("\nShutdown", .{});
-    out16(0xB004, 0x2000);
+    out16(0x604, 0x2000);
     unreachable;
 }
 

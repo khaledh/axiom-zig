@@ -18,6 +18,18 @@ pub fn println(comptime format: [:0]const u8, args: anytype) void {
     print(format ++ "\r\n", args);
 }
 
+pub fn printIndented(indent: usize, comptime format: [:0]const u8, args: anytype) void {
+    var i: usize = 0;
+    while (i < indent) : (i += 1) {
+        print(" ", .{});
+    }
+    print(format, args);
+}
+
+pub fn printlnIndented(indent: usize, comptime format: [:0]const u8, args: anytype) void {
+    printIndented(indent, format ++ "\r\n", args);
+}
+
 pub fn printGuid(guid: uefi.Guid) void {
     print("{x:0>8}-{x:0>4}-{X:0>4}-{X:0>2}{X:0>2}-{s:0>12}", .{
         guid.time_low,
