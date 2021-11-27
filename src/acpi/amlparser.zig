@@ -1,13 +1,14 @@
 const std = @import("std");
 const FixedBufferAllocator = std.heap.FixedBufferAllocator;
 const AllocationError = std.mem.Allocator.Error;
+const amltree = @import("amltree.zig");
 const io = @import("../io.zig");
 const print = io.print;
 const printIndented = io.printIndented;
 const println = io.println;
 const printlnIndented = io.printlnIndented;
 
-const Prefix = enum(u8) {
+pub const Prefix = enum(u8) {
     BytePrefix         = 0x0A,
     WordPrefix         = 0x0B,
     DWordPrefix        = 0x0C,
@@ -18,7 +19,7 @@ const Prefix = enum(u8) {
     ExtOpPrefix        = 0x5B,
 };
 
-const Char = enum(u8) {
+pub const Char = enum(u8) {
     Null               = 0x00,
     DigitChar_Start    = 0x30, // ('0'-   )
     DigitChar_End      = 0x39, // (   -'9')
@@ -31,7 +32,7 @@ const Char = enum(u8) {
     AsciiChar_End      = 0x7F,
 };
 
-const OpCodeByte = enum(u8) {
+pub const OpCodeByte = enum(u8) {
     ZeroOp             = 0x00,
     OneOp              = 0x01,
     AliasOp            = 0x06,
@@ -113,7 +114,7 @@ const OpCodeByte = enum(u8) {
     OnesOp             = 0xFF,
 };
 
-const OpCodeWord = enum(u16) {
+pub const OpCodeWord = enum(u16) {
     MutexOp            = 0x01_5B,
     EventOp            = 0x02_5B,
     CondRefOfOp        = 0x12_5B,
@@ -150,13 +151,13 @@ const OpCodeWord = enum(u16) {
 
 // AST
 
-const TermObj = union(enum) {
+pub const TermObj = union(enum) {
     obj: *Object,
     stmt_opcode: *StatementOpcode,
     expr_opcode: *ExpressionOpcode,
 };
 
-const StatementOpcode = union(enum) {
+pub const StatementOpcode = union(enum) {
     break_: *Break,
     // break_point: *BreakPoint,
     // continue_: *Continue,
@@ -173,33 +174,33 @@ const StatementOpcode = union(enum) {
     while_: *While,
 };
 
-const Break = struct {};
+pub const Break = struct {};
 
-const IfElse = struct {
+pub const IfElse = struct {
     predicate: *TermArg,
     terms: []TermObj,
     else_terms: ?[]TermObj,
 };
 
-const Notify = struct {
+pub const Notify = struct {
     object: *SuperName,
     value: *TermArg,
 };
 
-const Release = struct {
+pub const Release = struct {
     mutex: *SuperName,
 };
 
-const Return = struct {
+pub const Return = struct {
     arg_obj: *TermArg,
 };
 
-const While = struct {
+pub const While = struct {
     predicate: *TermArg,
     terms: []TermObj,
 };
 
-const ExpressionOpcode = union(enum) {
+pub const ExpressionOpcode = union(enum) {
     acquire: *Acquire,
     add: *Add,
     and_: *And,
@@ -255,189 +256,268 @@ const ExpressionOpcode = union(enum) {
     call: *MethodInvocation,
 };
 
-const Acquire = struct {
+pub const Acquire = struct {
     mutex: *SuperName,
     timeout: u32,
 };
 
-const Add = struct {
+pub const Add = struct {
     operand1: *TermArg,
     operand2: *TermArg,
     target: ?*Target,
 };
 
-const LAnd = struct {
+pub const LAnd = struct {
     operand1: *TermArg,
     operand2: *TermArg,
 };
 
-const Buffer = struct {
+pub const Buffer = struct {
     size: *TermArg,
     bytes: []u8,
 };
 
-const DerefOf = struct {
+pub const ResourceDescriptorBuffer = struct {
+    size: *TermArg,
+    descriptors: []ResourceDescriptor,
+};
+
+const ResourceDescriptor = union(enum) {
+    // irq: IrqDesc,
+    // dma: DmaDesc,
+    // dma_fixed: DmaFixedDesc,
+    // io: IoDesc,
+    // io_fixed: IoFixedDesc,
+    // mem_range24: MemoryRange24Desc,
+    // mem_range32: MemoryRange32Desc,
+    // mem_range32_fixed: MemoryRange32FixedDesc,
+    // vendor_defined: VendorDefinedDsec,
+    // qword_addr_space: QWordAddressSpaceDesc,
+    dword_addr_space: *DWordAddressSpaceDesc,
+    // word_addr_space: WordAddressSpaceDesc,
+    // ext_addr_space: ExtendedAddressSpaceDesc,
+    // ext_interrupt: ExtendedInterruptDesc,
+    // gen_register: GenericRegisterDesc,
+    // gpio_conn: GpioConnectionDesc,
+    // gen_serial_conn: GenericSerialConnectionDesc,
+    // i2c_serial_conn: I2cSerialConnectionDesc,
+    // spi_serial_conn: SpiSerialConnectionDesc,
+    // uart_serial_conn: UartSerialConnectionDesc,
+    // cam_serial_conn: CameraSerialConnectionDesc,
+    // pin_func: PinFunctionDesc,
+    // pin_conf: PinConfigDesc,
+    // pin_group: PinGroupDesc,
+    // pin_group_func: PinGroupFuncDesc,
+    // pin_group_conf: PinGroupConfigDesc,
+};
+
+const SmallResourceItemTag = enum(u8) {
+    irq            = 0x04 << 3,
+    dma            = 0x05 << 3,
+    start_dep_func = 0x06 << 3,
+    end_dep_func   = 0x07 << 3,
+    io             = 0x08 << 3,
+    io_fixed       = 0x09 << 3,
+    dma_fixed      = 0x0a << 3,
+    vendor_defined = 0x0e << 3,
+    end_tag        = 0x0f << 3,
+};
+
+const LargeResourceItemTag = enum(u8) {
+    mem_range24       = 0x01 | 0x80,
+    gen_register      = 0x02 | 0x80,
+    vendor_defined    = 0x04 | 0x80,
+    mem_range32       = 0x05 | 0x80,
+    mem_range32_fixed = 0x06 | 0x80,
+    dword_addr_space  = 0x07 | 0x80,
+    word_addr_space   = 0x08 | 0x80,
+    ext_interrupt     = 0x09 | 0x80,
+    qword_addr_space  = 0x0a | 0x80,
+    ext_addr_space    = 0x0b | 0x80,
+    gpio_conn         = 0x0c | 0x80,
+    pin_func          = 0x0d | 0x80,
+    gen_serial_conn   = 0x0e | 0x80,
+    pin_conf          = 0x0f | 0x80,
+    pin_group         = 0x10 | 0x80,
+    pin_group_func    = 0x11 | 0x80,
+    pin_group_conf    = 0x12 | 0x80,
+};
+
+const DWordAddressSpaceDesc = struct {
+    resource_type: u8,
+    general_flags: u8,
+    type_flags: u8,
+    granularity: u32,
+    min: u32,
+    max: u32,
+    translation_offset: u32,
+    length: u32,
+    res_source: ?[]const u8 = null,
+    res_source_index: ?u8 = null,
+};
+
+pub const DerefOf = struct {
     obj_ref: *TermArg,
 };
 
-const Increment = struct {
+pub const Increment = struct {
     operand: *SuperName,
 };
 
-const Index = struct {
+pub const Index = struct {
     obj: *TermArg,
     index: *TermArg,
     target: ?*Target,
 };
 
-const LEqual = struct {
+pub const LEqual = struct {
     operand1: *TermArg,
     operand2: *TermArg,
 };
 
-const LGreater = struct {
+pub const LGreater = struct {
     operand1: *TermArg,
     operand2: *TermArg,
 };
 
-const LLess = struct {
+pub const LLess = struct {
     operand1: *TermArg,
     operand2: *TermArg,
 };
 
-const LNot = struct {
+pub const LNot = struct {
     operand: *TermArg,
 };
 
-const LOr = struct {
+pub const LOr = struct {
     operand1: *TermArg,
     operand2: *TermArg,
 };
 
-const Or = struct {
-    operand1: *TermArg,
-    operand2: *TermArg,
-    target: ?*Target,
-};
-
-const And = struct {
+pub const Or = struct {
     operand1: *TermArg,
     operand2: *TermArg,
     target: ?*Target,
 };
 
-const Package = struct {
+pub const And = struct {
+    operand1: *TermArg,
+    operand2: *TermArg,
+    target: ?*Target,
+};
+
+pub const Package = struct {
     n_elements: u8,
     elements: []PackageElement,
 };
 
-const PackageElement = union(enum) {
-    data_obj: *DataObject,
+pub const PackageElement = union(enum) {
+    data_ref_obj: *DataRefObject,
     name: *NameString,
 };
 
-const RefOf = struct {
+pub const RefOf = struct {
     source: *SuperName,
 };
 
-const ShiftLeft = struct {
+pub const ShiftLeft = struct {
     operand: *TermArg,
     shift_count: *TermArg,
     target: ?*Target,
 };
 
-const ShiftRight = struct {
+pub const ShiftRight = struct {
     operand: *TermArg,
     shift_count: *TermArg,
     target: ?*Target,
 };
 
-const SizeOf = struct {
+pub const SizeOf = struct {
     operand: *SuperName,
 };
 
-const Store = struct {
+pub const Store = struct {
     source: *TermArg,
     dest: *SuperName,
 };
 
-const Subtract = struct {
+pub const Subtract = struct {
     operand1: *TermArg,
     operand2: *TermArg,
     target: ?*Target,
 };
 
-const ToBuffer = struct {
+pub const ToBuffer = struct {
     operand: *TermArg,
     target: ?*Target,
 };
 
-const ToHexString = struct {
+pub const ToHexString = struct {
     operand: *TermArg,
     target: ?*Target,
 };
 
-const MethodInvocation = struct {
+pub const MethodInvocation = struct {
     name: *NameString,
     args: []TermArg,
 };
 
-const Target = union(enum) {
+pub const Target = union(enum) {
     name: *SuperName,
     null_: void,
 };
 
-const SuperName = union(enum) {
+pub const SuperName = union(enum) {
     simple_name: *SimpleName,
     debug_obj: *DebugObj,
     ref_type_opcode: *ReferenceTypeOpcode,
 };
 
-const SimpleName = union(enum) {
+pub const SimpleName = union(enum) {
     name: *NameString,
     arg: ArgObj,
     local: LocalObj
 };
 
-const DebugObj = struct {};
+pub const DebugObj = struct {};
 
-const ReferenceTypeOpcode = union(enum) {
+pub const ReferenceTypeOpcode = union(enum) {
     ref_of: *RefOf,
     deref_of: *DerefOf,
     index: *Index,
 };
 
-const Object = union(enum) {
+pub const Object = union(enum) {
     ns_mod_obj: *NameSpaceModifierObj,
     named_obj: *NamedObj,
 };
 
-const NameSpaceModifierObj = union(enum) {
+pub const NameSpaceModifierObj = union(enum) {
     // def_alias: *DefAlias,
     def_name: *DefName,
     def_scope: *DefScope,
 };
 
-const DefScope = struct {
+pub const DefScope = struct {
     name: *NameString,
     terms: []TermObj,
 };
 
-const DefName = struct {
+pub const DefName = struct {
     name: *NameString,
     data_ref_obj: *DataRefObject,
 };
 
-const DataRefObject = union(enum) {
+pub const DataRefObject = union(enum) {
     data_obj: *DataObject,
-    obj_ref: u64,
+    obj_ref: *TermArg,
 };
 
-const NameString = struct {
+pub const NameString = struct {
     name: []const u8,
 };
 
-const NamedObj = union(enum) {
+pub const NamedObj = union(enum) {
     // DefBankField,
     // DefCreateBitField,
     // DefCreateByteField,
@@ -459,13 +539,13 @@ const NamedObj = union(enum) {
     // DefThermalZone,
 };
 
-const DefField = struct {
+pub const DefField = struct {
     name: *NameString,
     flags: u8,
     field_elements: []FieldElement,
 };
 
-const FieldElement = union(enum) {
+pub const FieldElement = union(enum) {
     named_fld: *NamedField,
     reserved_fld: *ReservedField,
     // access_fld: AccessField,
@@ -473,41 +553,41 @@ const FieldElement = union(enum) {
     // connect_fld: ConnectField,
 };
 
-const NamedField = struct {
+pub const NamedField = struct {
     name: NameSeg,
     bits: u32,
 };
 
-const ReservedField = struct {
+pub const ReservedField = struct {
     len: u32,
 };
 
-const NameSeg = [4]u8;
+pub const NameSeg = [4]u8;
 
-const DefMethod = struct {
+pub const DefMethod = struct {
     name: *NameString,
     arg_count: u3,
     flags: u8,
     terms: []TermObj,
 };
 
-const DefCreateDWordField = struct {
+pub const DefCreateDWordField = struct {
     source_buff: *TermArg,
     byte_index: *TermArg,
     field_name: *NameString,
 };
 
-const DefDevice = struct {
+pub const DefDevice = struct {
     name: *NameString,
     terms: []TermObj,
 };
 
-const DefMutex = struct {
+pub const DefMutex = struct {
     name: *NameString,
     sync_flags: u8,
 };
 
-const DefOpRegion = struct {
+pub const DefOpRegion = struct {
     name: *NameString,
     space: u8,
     offset: *TermArg,
@@ -515,7 +595,7 @@ const DefOpRegion = struct {
 };
 
 // deprecated in 6.4
-const DefProcessor = struct {
+pub const DefProcessor = struct {
     name: *NameString,
     proc_id: u8,
     pblk_addr: u32,
@@ -523,7 +603,7 @@ const DefProcessor = struct {
     terms: []TermObj,
 };
 
-const TermArg = union(enum) {
+pub const TermArg = union(enum) {
     expr_opcode: *ExpressionOpcode,
     data_obj: *DataObject,
     arg_obj: ArgObj,
@@ -531,13 +611,13 @@ const TermArg = union(enum) {
     name_str: *NameString,
 };
 
-const DataObject = union(enum) {
+pub const DataObject = union(enum) {
     comp_data: *ComputationalData,
     package: *Package,
     // DefVarPackage,
 };
 
-const ArgObj = enum(u8) {
+pub const ArgObj = enum(u8) {
     arg0 = @enumToInt(OpCodeByte.Arg0Op),
     arg1 = @enumToInt(OpCodeByte.Arg1Op),
     arg2 = @enumToInt(OpCodeByte.Arg2Op),
@@ -547,7 +627,7 @@ const ArgObj = enum(u8) {
     arg6 = @enumToInt(OpCodeByte.Arg6Op),
 };
 
-const LocalObj = enum(u8) {
+pub const LocalObj = enum(u8) {
     local0 = @enumToInt(OpCodeByte.Local0Op),
     local1 = @enumToInt(OpCodeByte.Local1Op),
     local2 = @enumToInt(OpCodeByte.Local2Op),
@@ -558,15 +638,16 @@ const LocalObj = enum(u8) {
     local7 = @enumToInt(OpCodeByte.Local7Op)
 };
 
-const ComputationalData = union(enum) {
+pub const ComputationalData = union(enum) {
     byte_const: u8,
     word_const: u16,
     dword_const: u32,
     qword_const: u64,
-    string: [:0]const u8,
     const_obj: u8,
-    // RevisionOp,
+    string: [:0]const u8,
+    revision: u64,
     buffer: *Buffer,
+    res_desc_buffer: *ResourceDescriptorBuffer,
 };
 
 // Namespace
@@ -760,11 +841,15 @@ pub fn AmlParser() type {
 
         pub fn parse(self: *Self, aml_block: []const u8) void {
             self.block = aml_block;
-            _ = self.terms(aml_block.len) catch |err| {
+            const trms = self.terms(aml_block.len) catch |err| {
                 println("error: {}", .{err});
+                return;
             };
 
             self.ns_builder.print();
+
+            var tree_printer = amltree.AmlTreePrinter.init();
+            tree_printer.print(trms);
         }
 
         fn terms(self: *Self, len: usize) AllocationError![]TermObj {
@@ -2061,17 +2146,17 @@ pub fn AmlParser() type {
         fn packageElement(self: *Self) AllocationError!?*PackageElement {
             var result: ?*PackageElement = null;
 
-            if (try self.dataObject()) |data_obj| {
-                var pkg_elem = try allocator.create(PackageElement);
-                pkg_elem.* = PackageElement{
-                    .data_obj = data_obj,
-                };
-                result = pkg_elem;
-            }
-            else if (try self.nameString()) |name_str| {
+            if (try self.nameString()) |name_str| {
                 var pkg_elem = try allocator.create(PackageElement);
                 pkg_elem.* = PackageElement{
                     .name = name_str,
+                };
+                result = pkg_elem;
+            }
+            else if (try self.dataRefObject()) |data_ref_obj| {
+                var pkg_elem = try allocator.create(PackageElement);
+                pkg_elem.* = PackageElement{
+                    .data_ref_obj = data_ref_obj,
                 };
                 result = pkg_elem;
             }
@@ -2079,6 +2164,101 @@ pub fn AmlParser() type {
             return result;
         }
 
+
+        fn res_desc_buffer(self: *Self) !?*ResourceDescriptorBuffer {
+            self.indent += 2;
+
+            var result: ?*ResourceDescriptorBuffer = null;
+
+            if (self.matchOpCodeByte(.BufferOp)) {
+                const start_loc = self.loc;
+                if (self.pkgLength()) |pkglen| {
+                    if (try self.termArg()) |size| {
+                        const len = pkglen - (self.loc - start_loc);
+
+                        if (self.loc + len - 1 < self.block.len and
+                            self.block[self.loc + len - 2] & 0xF8 == @enumToInt(SmallResourceItemTag.end_tag) and
+                            self.block[self.loc + len - 1] == 0
+                        ) {
+                            print("Buffer() <ResourceDescriptor>", .{});
+                            var list = std.ArrayList(ResourceDescriptor).init(allocator);
+                            while (try self.resourceDescriptor()) |res_desc| {
+                                try list.append(res_desc.*);
+                            }
+                            var buff = try allocator.create(ResourceDescriptorBuffer);
+                            buff.* = ResourceDescriptorBuffer{
+                                .size = size,
+                                .descriptors = list.items,
+                            };
+
+                            // TEMP hack
+                            if (self.loc < start_loc + pkglen) {
+                                self.loc = start_loc + pkglen;
+                            }
+
+                            result = buff;
+                        }
+                    }
+                }
+            }
+
+            self.indent -= 2;
+            return result;
+        }
+
+        fn resourceDescriptor(self: *Self) !?*ResourceDescriptor {
+            self.indent += 2;
+
+            var result: ?*ResourceDescriptor = null;
+
+            if (self.matchByte(@enumToInt(LargeResourceItemTag.dword_addr_space))) {
+                if (self.readWord()) |desc_len| {
+                    if (self.readByte()) |res_type| {
+                        if (self.readByte()) |general_flags| {
+                            if (self.readByte()) |type_flags| {
+                                if (self.readDWord()) |granularity| {
+                                    if (self.readDWord()) |min| {
+                                        if (self.readDWord()) |max| {
+                                            if (self.readDWord()) |translation_offset| {
+                                                if (self.readDWord()) |length| {
+                                                    println("DWord Address Space", .{});
+                                                    var addr_space = try allocator.create(DWordAddressSpaceDesc);
+                                                    addr_space.* = DWordAddressSpaceDesc{
+                                                        .resource_type = res_type,
+                                                        .general_flags = general_flags,
+                                                        .type_flags = type_flags,
+                                                        .granularity = granularity,
+                                                        .min = min,
+                                                        .max = max,
+                                                        .translation_offset = translation_offset,
+                                                        .length = length,
+                                                    };
+
+                                                    if (desc_len > 23) {
+                                                        addr_space.res_source_index = self.advance();
+                                                        addr_space.res_source = self.readBytes(desc_len - 23);
+                                                    }
+
+                                                    var res_desc = try allocator.create(ResourceDescriptor);
+                                                    res_desc.* = ResourceDescriptor{
+                                                        .dword_addr_space = addr_space,
+                                                    };
+
+                                                    result = res_desc;
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            self.indent -= 2;
+            return result;
+        }
 
         fn buffer(self: *Self) !?*Buffer {
             self.indent += 2;
@@ -2091,18 +2271,15 @@ pub fn AmlParser() type {
                     printlnIndented(self.indent, "Buffer()", .{});
                     if (try self.termArg()) |size| {
                         const len = pkglen - (self.loc - start_loc);
-                        var buff = try allocator.create(Buffer);
-                        buff.* = Buffer{
-                            .size = size,
-                            .bytes = try allocator.dupe(u8, self.block[self.loc..self.loc+len]),
-                        };
-                        var i: usize = 0;
-                        while (i < len) : (i += 1) {
-                            _ = self.advance();
-                        }
-                        // println("buffer size={}, bytes.len={}", .{size, buffer.bytes.len});
+                        if (self.readBytes(len)) |bytes| {
+                            var buff = try allocator.create(Buffer);
+                            buff.* = Buffer{
+                                .size = size,
+                                .bytes = try allocator.dupe(u8, bytes),
+                            };
 
-                        result = buff;
+                            result = buff;
+                        }
                     }
                 }
             }
@@ -2110,7 +2287,6 @@ pub fn AmlParser() type {
             self.indent -= 2;
             return result;
         }
-
 
         fn dataObject(self: *Self) !?*DataObject {
             var result: ?*DataObject = null;
@@ -2175,12 +2351,28 @@ pub fn AmlParser() type {
                 };
                 result = comp_data;
             }
+            else if (self.revision()) |rev| {
+                var comp_data = try allocator.create(ComputationalData);
+                comp_data.* = ComputationalData{
+                    .revision = rev,
+                };
+                result = comp_data;
+            }
             else if (try self.string()) |str| {
                 var comp_data = try allocator.create(ComputationalData);
                 comp_data.* = ComputationalData{
                     .string = str,
                 };
                 result = comp_data;
+            }
+            else if (try self.res_desc_buffer()) |res_desc_buff| {
+                self.indent -= 2;
+                var comp_data = try allocator.create(ComputationalData);
+                comp_data.* = ComputationalData{
+                    .res_desc_buffer = res_desc_buff,
+                };
+                result = comp_data;
+                self.indent += 2;
             }
             else if (try self.buffer()) |buff| {
                 self.indent -= 2;
@@ -2191,10 +2383,6 @@ pub fn AmlParser() type {
                 result = comp_data;
                 self.indent += 2;
             }
-            // const result =
-            //     byteConst() or wordConst() or // dWordConst() or qWordConst() or
-            //     // string() or
-            //     constObj(); // or revisionOp() or defBuffer();
 
             return result;
         }
@@ -2206,7 +2394,7 @@ pub fn AmlParser() type {
 
             if (self.matchPrefix(.BytePrefix)) {
                 result = self.advance();
-                print("0x{x}", .{result});
+                // print("0x{x}", .{result});
             }
 
             return result;
@@ -2219,7 +2407,7 @@ pub fn AmlParser() type {
 
             if (self.matchPrefix(.WordPrefix)) {
                 result = self.readWord();
-                print("0x{x}", .{result});
+                // print("0x{x}", .{result});
             }
 
             return result;
@@ -2232,7 +2420,7 @@ pub fn AmlParser() type {
 
             if (self.matchPrefix(.DWordPrefix)) {
                 result = self.readDWord();
-                print("0x{x}", .{result});
+                // print("0x{x}", .{result});
             }
 
             return result;
@@ -2245,7 +2433,7 @@ pub fn AmlParser() type {
 
             if (self.matchPrefix(.QWordPrefix)) {
                 result = self.readQWord();
-                print("0x{x}", .{result});
+                // print("0x{x}", .{result});
             }
 
             return result;
@@ -2258,16 +2446,26 @@ pub fn AmlParser() type {
 
             if (self.matchOpCodeByte(.ZeroOp)) {
                 result = 0x00;
-                print("0x{x}", .{result});
+                // print("0x{x}", .{result});
             } else if (self.matchOpCodeByte(.OneOp)) {
                 result = 0x01;
-                print("0x{x}", .{result});
+                // print("0x{x}", .{result});
             } else if (self.matchOpCodeByte(.OnesOp)) {
                 result = 0xFF;
-                print("0x{x}", .{result});
+                // print("0x{x}", .{result});
             }
 
             return result;
+        }
+
+        fn revision(self: *Self) ?u64 {
+            var result: ?u8 = null;
+
+            if (self.matchOpCodeWord(.RevisionOp)) {
+                result = 1;
+            }
+
+            return null;
         }
 
         fn string(self: *Self) !?[:0]const u8 {
@@ -2383,11 +2581,10 @@ pub fn AmlParser() type {
                 };
                 result = data_ref_obj;
             }
-            else {
+            else if (try self.termArg()) |term_arg| {
                 var data_ref_obj = try allocator.create(DataRefObject);
                 data_ref_obj.* = DataRefObject{
-                    // TODO: implement
-                    .obj_ref = 0,
+                    .obj_ref = term_arg,
                 };
                 result = data_ref_obj;
             }
@@ -2676,6 +2873,10 @@ pub fn AmlParser() type {
             return self.block[self.loc] | @intCast(u16, self.block[self.loc + 1]) << 8;
         }
 
+        fn readByte(self: *Self) ?u8 {
+            return self.advance();
+        }
+
         fn readWord(self: *Self) ?u16 {
             if (self.advance()) |lo| {
                 if (self.advance()) |hi| {
@@ -2703,6 +2904,14 @@ pub fn AmlParser() type {
             return null;
         }
 
+        fn readBytes(self: *Self, len: usize) ?[]const u8 {
+            if (self.loc + len - 1 < self.block.len) {
+                self.loc += len;
+                return self.block[self.loc..(self.loc + len)];
+            }
+            return null;
+        }
+
         fn readString(self: *Self) ?[]const u8 {
             const start = self.loc;
             while (self.block[self.loc] != 0 and self.loc < self.block.len) {
@@ -2710,7 +2919,7 @@ pub fn AmlParser() type {
             }
             if (self.loc < self.block.len) {
                 self.loc += 1;
-                return self.block[start..self.loc-1];
+                return self.block[start..(self.loc - 1)];
             }
             return null;
         }
