@@ -816,53 +816,94 @@ fn NamespaceBuilder() type {
 // Parser
 
 pub fn AmlParser() type {
+    const ParseContext = struct {
+        block: []const u8,
+        loc: usize,
+    };
+
     return struct {
         const Self = @This();
 
         var buf: [1024 * 1024]u8 = undefined;
         var fba = std.heap.FixedBufferAllocator.init(&buf);
-        const allocator = &fba.allocator;
 
         allocator: *std.mem.Allocator,
         ns_builder: NamespaceBuilder(),
-        block: []const u8,
-        loc: usize,
+        ctx_stack: std.ArrayList(ParseContext),
+        ctx: ParseContext,
         indent: usize,
 
         pub fn init() Self {
             return .{
-                .allocator = allocator,
-                .ns_builder = NamespaceBuilder().init(allocator),
-                .block = undefined,
-                .loc = 0,
+                .allocator = &fba.allocator,
+                .ns_builder = NamespaceBuilder().init(&fba.allocator),
+                .ctx_stack = std.ArrayList(ParseContext).init(&fba.allocator),
+                .ctx = undefined,
                 .indent = 0,
             };
         }
 
+        fn enterContext(self: *Self, len: usize) !void {
+            try self.ctx_stack.append(self.ctx);
+            self.ctx = ParseContext{
+                .block = self.ctx.block[self.ctx.loc..(self.ctx.loc + len)],
+                .loc = 0,
+            };
+        }
+
+        fn exitContext(self: *Self) void {
+            const exit_ctx = self.ctx;
+            self.ctx = self.ctx_stack.pop();
+            self.ctx.loc += exit_ctx.block.len;
+        }
+
+        fn rewindContext(self: *Self) void {
+            self.ctx = self.ctx_stack.pop();
+        }
+
         pub fn parse(self: *Self, aml_block: []const u8) void {
-            self.block = aml_block;
-            const trms = self.terms(aml_block.len) catch |err| {
+            self.ctx = ParseContext{
+                .block = aml_block,
+                .loc = 0,
+            };
+
+            println("\n\n### Parse Tree\n", .{});
+
+            const term_list = self.terms(self.ctx.block.len) catch |err| {
                 println("error: {}", .{err});
                 return;
             };
+            _ = term_list;
 
-            self.ns_builder.print();
+            // println("\n\n### Namespace\n", .{});
+            // self.ns_builder.print();
 
-            var tree_printer = amltree.AmlTreePrinter.init();
-            tree_printer.print(trms);
+            // println("\n\n### AML Tree\n", .{});
+
+            // var tree_printer = amltree.AmlTreePrinter.init();
+            // tree_printer.print(term_list);
         }
 
         fn terms(self: *Self, len: usize) AllocationError![]TermObj {
             var result: []TermObj = undefined;
-            var list = std.ArrayList(TermObj).init(allocator);
+            var list = std.ArrayList(TermObj).init(self.allocator);
 
-            const start_loc = self.loc;
-            while (self.loc < start_loc + len) {
-                if (try self.termObj()) |term_obj| {
-                    try list.append(term_obj.*);
+            const start_loc = self.ctx.loc;
+            if (len > 0) {
+                while (self.ctx.loc < start_loc + len) {
+                    if (try self.termObj()) |term_obj| {
+                        try list.append(term_obj.*);
+                    }
+                    else {
+                        break;
+                    }
                 }
-                else {
-                    break;
+            } else {
+                while (true) {
+                    if (try self.termObj()) |term_obj| {
+                        try list.append(term_obj.*);
+                    }
+                    else break;
                 }
             }
 
@@ -875,21 +916,21 @@ pub fn AmlParser() type {
             var result: ?*TermObj = null;
 
             if (try self.object()) |obj| {
-                var term_obj = try allocator.create(TermObj);
+                var term_obj = try self.allocator.create(TermObj);
                 term_obj.* = TermObj{
                     .obj = obj,
                 };
                 result = term_obj;
             }
             else if (try self.statementOpCode()) |stmt_opcode| {
-                var term_obj = try allocator.create(TermObj);
+                var term_obj = try self.allocator.create(TermObj);
                 term_obj.* = TermObj{
                     .stmt_opcode = stmt_opcode,
                 };
                 result = term_obj;
             }
             else if (try self.expressionOpCode()) |expr_opcode| {
-                var term_obj = try allocator.create(TermObj);
+                var term_obj = try self.allocator.create(TermObj);
                 term_obj.* = TermObj{
                     .expr_opcode = expr_opcode,
                 };
@@ -903,14 +944,14 @@ pub fn AmlParser() type {
             var result: ?*Object = null;
 
             if (try self.namespaceModifierObj()) |ns_mod_obj| {
-                var obj = try allocator.create(Object);
+                var obj = try self.allocator.create(Object);
                 obj.* = Object{
                     .ns_mod_obj = ns_mod_obj,
                 };
                 result = obj;
             }
             else if (try self.namedObj()) |named_obj| {
-                var obj = try allocator.create(Object);
+                var obj = try self.allocator.create(Object);
                 obj.* = Object{
                     .named_obj = named_obj,
                 };
@@ -921,41 +962,49 @@ pub fn AmlParser() type {
         }
 
         fn statementOpCode(self: *Self) !?*StatementOpcode {
-            // printlnIndented(self.indent, @src().fn_name, .{});
             self.indent += 2;
 
             var result: ?*StatementOpcode = null;
 
             if (self.matchOpCodeByte(.BreakOp)) {
                 printlnIndented(self.indent, "Break()", .{});
-                var stmt_opcode = try allocator.create(StatementOpcode);
+                var stmt_opcode = try self.allocator.create(StatementOpcode);
                 stmt_opcode.* = StatementOpcode{
-                    .break_ = try allocator.create(Break),
+                    .break_ = try self.allocator.create(Break),
                 };
                 result = stmt_opcode;
             }
             if (self.matchOpCodeByte(.IfOp)) {
-                var pkg_start = self.loc;
-                if (self.pkgLength()) |pkglen_if| {
+                if (self.pkgPayload()) |payload_if| {
                     printlnIndented(self.indent, "If()", .{});
+                    const payload_start = self.ctx.loc;
                     if (try self.termArg()) |predicate| {
-                        const len_if = pkglen_if - (self.loc - pkg_start);
-                        var if_else = try allocator.create(IfElse);
-                        if_else.* = IfElse{
-                            .predicate = predicate,
-                            .terms = try self.terms(len_if),
-                            .else_terms = null,
-                        };
+
+                        var if_else = try self.allocator.create(IfElse);
+
+                        try self.enterContext(payload_if.len - (self.ctx.loc - payload_start));
+                        {
+                            if_else.* = IfElse{
+                                .predicate = predicate,
+                                .terms = try self.terms(0),
+                                .else_terms = null,
+                            };
+                        }
+                        self.exitContext();
+
                         if (self.matchOpCodeByte(.ElseOp)) {
-                            printlnIndented(self.indent, "Else()", .{});
-                            pkg_start = self.loc;
-                            if (self.pkgLength()) |pkglen_else| {
-                                const len_else = pkglen_else - (self.loc - pkg_start);
-                                if_else.else_terms = try self.terms(len_else);
+                            if (self.pkgPayload()) |payload_else| {
+                                printlnIndented(self.indent, "Else()", .{});
+
+                                try self.enterContext(payload_else.len);
+                                {
+                                    if_else.else_terms = try self.terms(0);
+                                }
+                                self.exitContext();
                             }
                         }
 
-                        var stmt_opcode = try allocator.create(StatementOpcode);
+                        var stmt_opcode = try self.allocator.create(StatementOpcode);
                         stmt_opcode.* = StatementOpcode{
                             .if_else = if_else,
                         };
@@ -965,33 +1014,32 @@ pub fn AmlParser() type {
                 }
             }
             else if (self.matchOpCodeByte(.NotifyOp)) {
-                if (try self.superName()) |obj| {
-                    if (try self.termArg()) |value| {
-                        printlnIndented(self.indent, "Notify()", .{});
-                        var notify = try allocator.create(Notify);
-                        notify.* = Notify{
-                            .object = obj,
-                            .value = value,
-                        };
+                if (try self.superName()) |obj|
+                if (try self.termArg()) |value| {
+                    printlnIndented(self.indent, "Notify()", .{});
+                    var notify = try self.allocator.create(Notify);
+                    notify.* = Notify{
+                        .object = obj,
+                        .value = value,
+                    };
 
-                        var stmt_opcode = try allocator.create(StatementOpcode);
-                        stmt_opcode.* = StatementOpcode{
-                            .notify = notify,
-                        };
+                    var stmt_opcode = try self.allocator.create(StatementOpcode);
+                    stmt_opcode.* = StatementOpcode{
+                        .notify = notify,
+                    };
 
-                        result = stmt_opcode;
-                    }
-                }
+                    result = stmt_opcode;
+                };
             }
             else if (self.matchOpCodeWord(.ReleaseOp)) {
                 if (try self.superName()) |mutex| {
                     printlnIndented(self.indent, "Release()", .{});
-                    var release = try allocator.create(Release);
+                    var release = try self.allocator.create(Release);
                     release.* = Release{
                         .mutex = mutex,
                     };
 
-                    var stmt_opcode = try allocator.create(StatementOpcode);
+                    var stmt_opcode = try self.allocator.create(StatementOpcode);
                     stmt_opcode.* = StatementOpcode{
                         .release = release,
                     };
@@ -1002,12 +1050,12 @@ pub fn AmlParser() type {
             else if (self.matchOpCodeByte(.ReturnOp)) {
                 printlnIndented(self.indent, "Return()", .{});
                 if (try self.termArg()) |arg_obj| {
-                    var return_ = try allocator.create(Return);
+                    var return_ = try self.allocator.create(Return);
                     return_.* = Return{
                         .arg_obj = arg_obj,
                     };
 
-                    var stmt_opcode = try allocator.create(StatementOpcode);
+                    var stmt_opcode = try self.allocator.create(StatementOpcode);
                     stmt_opcode.* = StatementOpcode{
                         .return_ = return_,
                     };
@@ -1016,23 +1064,26 @@ pub fn AmlParser() type {
                 }
             }
             else if (self.matchOpCodeByte(.WhileOp)) {
-                const start_loc = self.loc;
-                if (self.pkgLength()) |pkglen| {
-                    printlnIndented(self.indent, "While()", .{});
+                if (self.pkgPayload()) |payload| {
+                    const payload_start = self.ctx.loc;
                     if (try self.termArg()) |predicate| {
-                        const len = pkglen - (self.loc - start_loc);
-                        var while_ = try allocator.create(While);
-                        while_.* = While{
-                            .predicate = predicate,
-                            .terms = try self.terms(len),
-                        };
+                        printlnIndented(self.indent, "While()", .{});
+                        try self.enterContext(payload.len - (self.ctx.loc - payload_start));
+                        {                            
+                            var while_ = try self.allocator.create(While);
+                            while_.* = While{
+                                .predicate = predicate,
+                                .terms = try self.terms(0),
+                            };
 
-                        var stmt_opcode = try allocator.create(StatementOpcode);
-                        stmt_opcode.* = StatementOpcode{
-                            .while_ = while_,
-                        };
+                            var stmt_opcode = try self.allocator.create(StatementOpcode);
+                            stmt_opcode.* = StatementOpcode{
+                                .while_ = while_,
+                            };
 
-                        result = stmt_opcode;
+                            result = stmt_opcode;
+                        }
+                        self.exitContext();
                     }
                 }
             }
@@ -1042,74 +1093,69 @@ pub fn AmlParser() type {
         }
 
         fn expressionOpCode(self: *Self) !?*ExpressionOpcode {
-            // printlnIndented(self.indent, @src().fn_name, .{});
             self.indent += 2;
 
             var result: ?*ExpressionOpcode = null;
 
             if (self.matchOpCodeWord(.AcquireOp)) {
-                if (try self.superName()) |mutex| {
-                    if (self.readWord()) |timeout| {
-                        printlnIndented(self.indent, "Acquire()", .{});
-                        var acquire = try allocator.create(Acquire);
-                        acquire.* = Acquire{
-                            .mutex = mutex,
-                            .timeout = timeout,
-                        };
+                if (try self.superName()) |mutex|
+                if (self.readWord()) |timeout| {
+                    printlnIndented(self.indent, "Acquire()", .{});
+                    var acquire = try self.allocator.create(Acquire);
+                    acquire.* = Acquire{
+                        .mutex = mutex,
+                        .timeout = timeout,
+                    };
 
-                        var expr_opcode = try allocator.create(ExpressionOpcode);
-                        expr_opcode.* = ExpressionOpcode{
-                            .acquire = acquire,
-                        };
+                    var expr_opcode = try self.allocator.create(ExpressionOpcode);
+                    expr_opcode.* = ExpressionOpcode{
+                        .acquire = acquire,
+                    };
 
-                        result = expr_opcode;
-                    }
-                }
+                    result = expr_opcode;
+                };
             }
             else if (self.matchOpCodeByte(.AddOp)) {
                 printlnIndented(self.indent, "Add()", .{});
-                if (try self.termArg()) |operand1| {
-                    if (try self.termArg()) |operand2| {
-                        if (try self.target()) |tgt| {
-                            var add = try allocator.create(Add);
-                            add.* = Add{
-                                .operand1 = operand1,
-                                .operand2 = operand2,
-                                .target = tgt,
-                            };
+                if (try self.termArg()) |operand1|
+                if (try self.termArg()) |operand2|
+                if (try self.target()) |tgt| {
+                    var add = try self.allocator.create(Add);
+                    add.* = Add{
+                        .operand1 = operand1,
+                        .operand2 = operand2,
+                        .target = tgt,
+                    };
 
-                            var expr_opcode = try allocator.create(ExpressionOpcode);
-                            expr_opcode.* = ExpressionOpcode{
-                                .add = add,
-                            };
+                    var expr_opcode = try self.allocator.create(ExpressionOpcode);
+                    expr_opcode.* = ExpressionOpcode{
+                        .add = add,
+                    };
 
-                            result = expr_opcode;
-                        }
-                    }
-                }
+                    result = expr_opcode;
+                };
             }
             else if (self.matchOpCodeByte(.LandOp)) {
                 printlnIndented(self.indent, "LAnd()", .{});
-                if (try self.termArg()) |operand1| {
-                    if (try self.termArg()) |operand2| {
-                        var land = try allocator.create(LAnd);
-                        land.* = LAnd{
-                            .operand1 = operand1,
-                            .operand2 = operand2,
-                        };
+                if (try self.termArg()) |operand1|
+                if (try self.termArg()) |operand2| {
+                    var land = try self.allocator.create(LAnd);
+                    land.* = LAnd{
+                        .operand1 = operand1,
+                        .operand2 = operand2,
+                    };
 
-                        var expr_opcode = try allocator.create(ExpressionOpcode);
-                        expr_opcode.* = ExpressionOpcode{
-                            .land = land,
-                        };
+                    var expr_opcode = try self.allocator.create(ExpressionOpcode);
+                    expr_opcode.* = ExpressionOpcode{
+                        .land = land,
+                    };
 
-                        result = expr_opcode;
+                    result = expr_opcode;
 
-                    }
-                }
+                };
             }
             else if (try self.buffer()) |buff| {
-                var expr_opcode = try allocator.create(ExpressionOpcode);
+                var expr_opcode = try self.allocator.create(ExpressionOpcode);
                 expr_opcode.* = ExpressionOpcode{
                     .buffer = buff,
                 };
@@ -1119,12 +1165,12 @@ pub fn AmlParser() type {
             else if (self.matchOpCodeByte(.DerefOfOp)) {
                 printlnIndented(self.indent, "DerefOf()", .{});
                 if (try self.termArg()) |obj_ref| {
-                    var deref_of = try allocator.create(DerefOf);
+                    var deref_of = try self.allocator.create(DerefOf);
                     deref_of.* = DerefOf{
                         .obj_ref = obj_ref,
                     };
 
-                    var expr_opcode = try allocator.create(ExpressionOpcode);
+                    var expr_opcode = try self.allocator.create(ExpressionOpcode);
                     expr_opcode.* = ExpressionOpcode{
                         .deref_of = deref_of,
                     };
@@ -1135,73 +1181,70 @@ pub fn AmlParser() type {
             }
             else if (self.matchOpCodeByte(.LEqualOp)) {
                 printlnIndented(self.indent, "LEqual()", .{});
-                if (try self.termArg()) |operand1| {
-                    if (try self.termArg()) |operand2| {
-                        var lequal = try allocator.create(LEqual);
-                        lequal.* = LEqual{
-                            .operand1 = operand1,
-                            .operand2 = operand2,
-                        };
+                if (try self.termArg()) |operand1|
+                if (try self.termArg()) |operand2| {
+                    var lequal = try self.allocator.create(LEqual);
+                    lequal.* = LEqual{
+                        .operand1 = operand1,
+                        .operand2 = operand2,
+                    };
 
-                        var expr_opcode = try allocator.create(ExpressionOpcode);
-                        expr_opcode.* = ExpressionOpcode{
-                            .lequal = lequal,
-                        };
+                    var expr_opcode = try self.allocator.create(ExpressionOpcode);
+                    expr_opcode.* = ExpressionOpcode{
+                        .lequal = lequal,
+                    };
 
-                        result = expr_opcode;
+                    result = expr_opcode;
 
-                    }
-                }
+                };
             }
             else if (self.matchOpCodeByte(.LGreaterOp)) {
                 printlnIndented(self.indent, "LGreater()", .{});
-                if (try self.termArg()) |operand1| {
-                    if (try self.termArg()) |operand2| {
-                        var lgreater = try allocator.create(LGreater);
-                        lgreater.* = LGreater{
-                            .operand1 = operand1,
-                            .operand2 = operand2,
-                        };
+                if (try self.termArg()) |operand1|
+                if (try self.termArg()) |operand2| {
+                    var lgreater = try self.allocator.create(LGreater);
+                    lgreater.* = LGreater{
+                        .operand1 = operand1,
+                        .operand2 = operand2,
+                    };
 
-                        var expr_opcode = try allocator.create(ExpressionOpcode);
-                        expr_opcode.* = ExpressionOpcode{
-                            .lgreater = lgreater,
-                        };
+                    var expr_opcode = try self.allocator.create(ExpressionOpcode);
+                    expr_opcode.* = ExpressionOpcode{
+                        .lgreater = lgreater,
+                    };
 
-                        result = expr_opcode;
+                    result = expr_opcode;
 
-                    }
-                }
+                };
             }
             else if (self.matchOpCodeByte(.LLessOp)) {
                 printlnIndented(self.indent, "LLess()", .{});
-                if (try self.termArg()) |operand1| {
-                    if (try self.termArg()) |operand2| {
-                        var lless = try allocator.create(LLess);
-                        lless.* = LLess{
-                            .operand1 = operand1,
-                            .operand2 = operand2,
-                        };
+                if (try self.termArg()) |operand1|
+                if (try self.termArg()) |operand2| {
+                    var lless = try self.allocator.create(LLess);
+                    lless.* = LLess{
+                        .operand1 = operand1,
+                        .operand2 = operand2,
+                    };
 
-                        var expr_opcode = try allocator.create(ExpressionOpcode);
-                        expr_opcode.* = ExpressionOpcode{
-                            .lless = lless,
-                        };
+                    var expr_opcode = try self.allocator.create(ExpressionOpcode);
+                    expr_opcode.* = ExpressionOpcode{
+                        .lless = lless,
+                    };
 
-                        result = expr_opcode;
+                    result = expr_opcode;
 
-                    }
-                }
+                };
             }
             else if (self.matchOpCodeByte(.LnotOp)) {
                 printlnIndented(self.indent, "LNot()", .{});
                 if (try self.termArg()) |operand| {
-                    var lnot = try allocator.create(LNot);
+                    var lnot = try self.allocator.create(LNot);
                     lnot.* = LNot{
                         .operand = operand,
                     };
 
-                    var expr_opcode = try allocator.create(ExpressionOpcode);
+                    var expr_opcode = try self.allocator.create(ExpressionOpcode);
                     expr_opcode.* = ExpressionOpcode{
                         .lnot = lnot,
                     };
@@ -1213,12 +1256,12 @@ pub fn AmlParser() type {
             else if (self.matchOpCodeByte(.IncrementOp)) {
                 printlnIndented(self.indent, "Increment()", .{});
                 if (try self.superName()) |operand| {
-                    var increment = try allocator.create(Increment);
+                    var increment = try self.allocator.create(Increment);
                     increment.* = Increment{
                         .operand = operand,
                     };
 
-                    var expr_opcode = try allocator.create(ExpressionOpcode);
+                    var expr_opcode = try self.allocator.create(ExpressionOpcode);
                     expr_opcode.* = ExpressionOpcode{
                         .increment = increment,
                     };
@@ -1232,14 +1275,14 @@ pub fn AmlParser() type {
                 if (try self.termArg()) |obj| {
                     if (try self.termArg()) |index_val| {
                         if (try self.target()) |tgt| {
-                            var index = try allocator.create(Index);
+                            var index = try self.allocator.create(Index);
                             index.* = Index{
                                 .obj = obj,
                                 .index = index_val,
                                 .target = tgt,
                             };
 
-                            var expr_opcode = try allocator.create(ExpressionOpcode);
+                            var expr_opcode = try self.allocator.create(ExpressionOpcode);
                             expr_opcode.* = ExpressionOpcode{
                                 .index = index,
                             };
@@ -1250,7 +1293,7 @@ pub fn AmlParser() type {
                 }
             }
             else if (try self.package()) |pkg| {
-                var expr_opcode = try allocator.create(ExpressionOpcode);
+                var expr_opcode = try self.allocator.create(ExpressionOpcode);
                 expr_opcode.* = ExpressionOpcode{
                     .package = pkg,
                 };
@@ -1260,12 +1303,12 @@ pub fn AmlParser() type {
             else if (self.matchOpCodeByte(.RefOfOp)) {
                 printlnIndented(self.indent, "RefOf()", .{});
                 if (try self.superName()) |source| {
-                    var ref_of = try allocator.create(RefOf);
+                    var ref_of = try self.allocator.create(RefOf);
                     ref_of.* = RefOf{
                         .source = source,
                     };
 
-                    var expr_opcode = try allocator.create(ExpressionOpcode);
+                    var expr_opcode = try self.allocator.create(ExpressionOpcode);
                     expr_opcode.* = ExpressionOpcode{
                         .ref_of = ref_of,
                     };
@@ -1275,120 +1318,113 @@ pub fn AmlParser() type {
             }
             else if (self.matchOpCodeByte(.LorOp)) {
                 printlnIndented(self.indent, "LOr()", .{});
-                if (try self.termArg()) |operand1| {
-                    if (try self.termArg()) |operand2| {
-                        var lor = try allocator.create(LOr);
-                        lor.* = LOr{
+                if (try self.termArg()) |operand1|
+                if (try self.termArg()) |operand2| {
+                    var lor = try self.allocator.create(LOr);
+                    lor.* = LOr{
+                        .operand1 = operand1,
+                        .operand2 = operand2,
+                    };
+
+                    var expr_opcode = try self.allocator.create(ExpressionOpcode);
+                    expr_opcode.* = ExpressionOpcode{
+                        .lor = lor,
+                    };
+
+                    result = expr_opcode;
+                };
+            }
+            else if (self.matchOpCodeByte(.OrOp)) {
+                printlnIndented(self.indent, "Or()", .{});
+                if (try self.termArg()) |operand1|
+                if (try self.termArg()) |operand2| {
+                    if (try self.target()) |tgt| {
+                        var or_ = try self.allocator.create(Or);
+                        or_.* = Or{
                             .operand1 = operand1,
                             .operand2 = operand2,
+                            .target = tgt,
                         };
 
-                        var expr_opcode = try allocator.create(ExpressionOpcode);
+                        var expr_opcode = try self.allocator.create(ExpressionOpcode);
                         expr_opcode.* = ExpressionOpcode{
-                            .lor = lor,
+                            .or_ = or_,
                         };
 
                         result = expr_opcode;
                     }
-                }
-            }
-            else if (self.matchOpCodeByte(.OrOp)) {
-                printlnIndented(self.indent, "Or()", .{});
-                if (try self.termArg()) |operand1| {
-                    if (try self.termArg()) |operand2| {
-                        if (try self.target()) |tgt| {
-                            var or_ = try allocator.create(Or);
-                            or_.* = Or{
-                                .operand1 = operand1,
-                                .operand2 = operand2,
-                                .target = tgt,
-                            };
-
-                            var expr_opcode = try allocator.create(ExpressionOpcode);
-                            expr_opcode.* = ExpressionOpcode{
-                                .or_ = or_,
-                            };
-
-                            result = expr_opcode;
-                        }
-                    }
-                }
+                };
             }
             else if (self.matchOpCodeByte(.AndOp)) {
                 printlnIndented(self.indent, "And()", .{});
-                if (try self.termArg()) |operand1| {
-                    if (try self.termArg()) |operand2| {
-                        if (try self.target()) |tgt| {
-                            var and_ = try allocator.create(And);
-                            and_.* = And{
-                                .operand1 = operand1,
-                                .operand2 = operand2,
-                                .target = tgt,
-                            };
+                if (try self.termArg()) |operand1|
+                if (try self.termArg()) |operand2| {
+                    if (try self.target()) |tgt| {
+                        var and_ = try self.allocator.create(And);
+                        and_.* = And{
+                            .operand1 = operand1,
+                            .operand2 = operand2,
+                            .target = tgt,
+                        };
 
-                            var expr_opcode = try allocator.create(ExpressionOpcode);
-                            expr_opcode.* = ExpressionOpcode{
-                                .and_ = and_,
-                            };
+                        var expr_opcode = try self.allocator.create(ExpressionOpcode);
+                        expr_opcode.* = ExpressionOpcode{
+                            .and_ = and_,
+                        };
 
-                            result = expr_opcode;
-                        }
+                        result = expr_opcode;
                     }
-                }
+                };
             }
             else if (self.matchOpCodeByte(.ShiftLeftOp)) {
                 printlnIndented(self.indent, "ShiftLeft()", .{});
-                if (try self.termArg()) |operand| {
-                    if (try self.termArg()) |shift_count| {
-                        if (try self.target()) |tgt| {
-                            var shl = try allocator.create(ShiftLeft);
-                            shl.* = ShiftLeft{
-                                .operand = operand,
-                                .shift_count = shift_count,
-                                .target = tgt,
-                            };
+                if (try self.termArg()) |operand|
+                if (try self.termArg()) |shift_count|
+                if (try self.target()) |tgt| {
+                    var shl = try self.allocator.create(ShiftLeft);
+                    shl.* = ShiftLeft{
+                        .operand = operand,
+                        .shift_count = shift_count,
+                        .target = tgt,
+                    };
 
-                            var expr_opcode = try allocator.create(ExpressionOpcode);
-                            expr_opcode.* = ExpressionOpcode{
-                                .shift_left = shl,
-                            };
+                    var expr_opcode = try self.allocator.create(ExpressionOpcode);
+                    expr_opcode.* = ExpressionOpcode{
+                        .shift_left = shl,
+                    };
 
-                            result = expr_opcode;
-                        }
-                    }
-                }
+                    result = expr_opcode;
+                };
             }
             else if (self.matchOpCodeByte(.ShiftRightOp)) {
                 printlnIndented(self.indent, "ShiftRight()", .{});
-                if (try self.termArg()) |operand| {
-                    if (try self.termArg()) |shift_count| {
-                        if (try self.target()) |tgt| {
-                            var shr = try allocator.create(ShiftRight);
-                            shr.* = ShiftRight{
-                                .operand = operand,
-                                .shift_count = shift_count,
-                                .target = tgt,
-                            };
+                if (try self.termArg()) |operand|
+                if (try self.termArg()) |shift_count|
+                if (try self.target()) |tgt| {
+                    var shr = try self.allocator.create(ShiftRight);
+                    shr.* = ShiftRight{
+                        .operand = operand,
+                        .shift_count = shift_count,
+                        .target = tgt,
+                    };
 
-                            var expr_opcode = try allocator.create(ExpressionOpcode);
-                            expr_opcode.* = ExpressionOpcode{
-                                .shift_right = shr,
-                            };
+                    var expr_opcode = try self.allocator.create(ExpressionOpcode);
+                    expr_opcode.* = ExpressionOpcode{
+                        .shift_right = shr,
+                    };
 
-                            result = expr_opcode;
-                        }
-                    }
-                }
+                    result = expr_opcode;
+                };
             }
             else if (self.matchOpCodeByte(.SizeOfOp)) {
                 printlnIndented(self.indent, "SizeOf()", .{});
                 if (try self.superName()) |operand| {
-                    var size_of = try allocator.create(SizeOf);
+                    var size_of = try self.allocator.create(SizeOf);
                     size_of.* = SizeOf{
                         .operand = operand,
                     };
 
-                    var expr_opcode = try allocator.create(ExpressionOpcode);
+                    var expr_opcode = try self.allocator.create(ExpressionOpcode);
                     expr_opcode.* = ExpressionOpcode{
                         .size_of = size_of,
                     };
@@ -1399,121 +1435,114 @@ pub fn AmlParser() type {
             }
             else if (self.matchOpCodeByte(.StoreOp)) {
                 printlnIndented(self.indent, "Store()", .{});
-                if (try self.termArg()) |source| {
-                    if (try self.superName()) |dest| {
-                        var store = try allocator.create(Store);
-                        store.* = Store{
-                            .source = source,
-                            .dest = dest,
-                        };
+                if (try self.termArg()) |source|
+                if (try self.superName()) |dest| {
+                    var store = try self.allocator.create(Store);
+                    store.* = Store{
+                        .source = source,
+                        .dest = dest,
+                    };
 
-                        var expr_opcode = try allocator.create(ExpressionOpcode);
-                        expr_opcode.* = ExpressionOpcode{
-                            .store = store,
-                        };
+                    var expr_opcode = try self.allocator.create(ExpressionOpcode);
+                    expr_opcode.* = ExpressionOpcode{
+                        .store = store,
+                    };
 
-                        result = expr_opcode;
-                    }
-                }
+                    result = expr_opcode;
+                };
             }
             else if (self.matchOpCodeByte(.SubtractOp)) {
                 printlnIndented(self.indent, "Subtract()", .{});
-                if (try self.termArg()) |operand1| {
-                    if (try self.termArg()) |operand2| {
-                        if (try self.target()) |tgt| {
-                            var subtract = try allocator.create(Subtract);
-                            subtract.* = Subtract{
-                                .operand1 = operand1,
-                                .operand2 = operand2,
-                                .target = tgt,
-                            };
+                if (try self.termArg()) |operand1|
+                if (try self.termArg()) |operand2|
+                if (try self.target()) |tgt| {
+                    var subtract = try self.allocator.create(Subtract);
+                    subtract.* = Subtract{
+                        .operand1 = operand1,
+                        .operand2 = operand2,
+                        .target = tgt,
+                    };
 
-                            var expr_opcode = try allocator.create(ExpressionOpcode);
-                            expr_opcode.* = ExpressionOpcode{
-                                .subtract = subtract,
-                            };
+                    var expr_opcode = try self.allocator.create(ExpressionOpcode);
+                    expr_opcode.* = ExpressionOpcode{
+                        .subtract = subtract,
+                    };
 
-                            result = expr_opcode;
-                        }
-                    }
-                }
+                    result = expr_opcode;
+                };
             }
             else if (self.matchOpCodeByte(.ToBufferOp)) {
                 printlnIndented(self.indent, "ToBuffer()", .{});
-                if (try self.termArg()) |operand| {
-                    if (try self.target()) |tgt| {
-                        var to_buffer = try allocator.create(ToBuffer);
-                        to_buffer.* = ToBuffer{
-                            .operand = operand,
-                            .target = tgt,
-                        };
+                if (try self.termArg()) |operand|
+                if (try self.target()) |tgt| {
+                    var to_buffer = try self.allocator.create(ToBuffer);
+                    to_buffer.* = ToBuffer{
+                        .operand = operand,
+                        .target = tgt,
+                    };
 
-                        var expr_opcode = try allocator.create(ExpressionOpcode);
-                        expr_opcode.* = ExpressionOpcode{
-                            .to_buffer = to_buffer,
-                        };
+                    var expr_opcode = try self.allocator.create(ExpressionOpcode);
+                    expr_opcode.* = ExpressionOpcode{
+                        .to_buffer = to_buffer,
+                    };
 
-                        result = expr_opcode;
-                    }
-                }
+                    result = expr_opcode;
+                };
             }
             else if (self.matchOpCodeByte(.ToHexStringOp)) {
                 printlnIndented(self.indent, "ToHexString()", .{});
-                if (try self.termArg()) |operand| {
-                    if (try self.target()) |tgt| {
-                        var to_hex_string = try allocator.create(ToHexString);
-                        to_hex_string.* = ToHexString{
-                            .operand = operand,
-                            .target = tgt,
-                        };
+                if (try self.termArg()) |operand|
+                if (try self.target()) |tgt| {
+                    var to_hex_string = try self.allocator.create(ToHexString);
+                    to_hex_string.* = ToHexString{
+                        .operand = operand,
+                        .target = tgt,
+                    };
 
-                        var expr_opcode = try allocator.create(ExpressionOpcode);
-                        expr_opcode.* = ExpressionOpcode{
-                            .to_hex_string = to_hex_string,
-                        };
+                    var expr_opcode = try self.allocator.create(ExpressionOpcode);
+                    expr_opcode.* = ExpressionOpcode{
+                        .to_hex_string = to_hex_string,
+                    };
 
-                        result = expr_opcode;
-                    }
-                }
+                    result = expr_opcode;
+                };
             }
             else {
                 // Due to ambiguity between ExpressionOpcode->MethodInvocation and TermArg->NameString
                 // we need to keep track of the start loc to rewind to in case this is not a method name
-                const start_loc = self.loc;
+                const start_loc = self.ctx.loc;
                 if (try self.nameString()) |name_str| {
                     if (try self.ns_builder.getName(name_str.name)) |obj| {
-                        switch (obj) {
-                            .method => |method| {
-                                printlnIndented(self.indent, "MethodInvocation ({s})", .{name_str.name});
-                                var list = std.ArrayList(TermArg).init(allocator);
-                                var i: usize = 0;
-                                while (i < method.arg_count) : (i += 1) {
-                                    const arg = (try self.termArg()).?;
-                                    try list.append(arg.*);
-                                }
-
-                                var call = try allocator.create(MethodInvocation);
-                                call.* = MethodInvocation{
-                                    .name = name_str,
-                                    .args = list.items,
-                                };
-
-                                var expr_opcode = try allocator.create(ExpressionOpcode);
-                                expr_opcode.* = ExpressionOpcode{
-                                    .call = call,
-                                };
-
-                                result = expr_opcode;
-                            },
-                            else => {
-                                // rewind to let another rule consume the nameString
-                                self.loc = start_loc;
+                        if (obj == .method) {
+                            printlnIndented(self.indent, "MethodInvocation ({s})", .{name_str.name});
+                            var list = std.ArrayList(TermArg).init(self.allocator);
+                            var i: usize = 0;
+                            while (i < obj.method.arg_count) : (i += 1) {
+                                const arg = (try self.termArg()).?;
+                                try list.append(arg.*);
                             }
+
+                            var call = try self.allocator.create(MethodInvocation);
+                            call.* = MethodInvocation{
+                                .name = name_str,
+                                .args = list.items,
+                            };
+
+                            var expr_opcode = try self.allocator.create(ExpressionOpcode);
+                            expr_opcode.* = ExpressionOpcode{
+                                .call = call,
+                            };
+
+                            result = expr_opcode;
+                        }
+                        else {
+                            // rewind to let another rule consume the nameString
+                            self.ctx.loc = start_loc;
                         }
                     }
                     else {
                         // rewind to let another rule consume the nameString
-                        self.loc = start_loc;
+                        self.ctx.loc = start_loc;
                     }
                 }
             }
@@ -1526,14 +1555,14 @@ pub fn AmlParser() type {
             var result: ?*Target = null;
 
             if (try self.superName()) |name| {
-                var tgt = try allocator.create(Target);
+                var tgt = try self.allocator.create(Target);
                 tgt.* = Target{
                     .name = name,
                 };
                 result = tgt;
             }
             else if (self.nullName()) {
-                var tgt = try allocator.create(Target);
+                var tgt = try self.allocator.create(Target);
                 tgt.* = Target{
                     .null_ = {},
                 };
@@ -1547,14 +1576,14 @@ pub fn AmlParser() type {
             var result: ?*SuperName = null;
 
             if (try self.simpleName()) |simple_name| {
-                var super_name = try allocator.create(SuperName);
+                var super_name = try self.allocator.create(SuperName);
                 super_name.* = SuperName{
                     .simple_name = simple_name,
                 };
                 result = super_name;
             }
             else if (try self.debugObj()) |debug_obj| {
-                var super_name = try allocator.create(SuperName);
+                var super_name = try self.allocator.create(SuperName);
                 super_name.* = SuperName{
                     .debug_obj = debug_obj,
                 };
@@ -1562,7 +1591,7 @@ pub fn AmlParser() type {
             }
             else if (try self.refTypeOpcode()) |ref_type_opcode| {
                 // println("ReferenceTypeOpcode()", .{});
-                var super_name = try allocator.create(SuperName);
+                var super_name = try self.allocator.create(SuperName);
                 super_name.* = SuperName{
                     .ref_type_opcode = ref_type_opcode,
                 };
@@ -1576,21 +1605,21 @@ pub fn AmlParser() type {
             var result: ?*SimpleName = null;
 
             if (try self.nameString()) |name_str| {
-                var simple_name = try allocator.create(SimpleName);
+                var simple_name = try self.allocator.create(SimpleName);
                 simple_name.* = SimpleName{
                     .name = name_str,
                 };
                 result = simple_name;
             }
             else if (self.argObj()) |arg| {
-                var simple_name = try allocator.create(SimpleName);
+                var simple_name = try self.allocator.create(SimpleName);
                 simple_name.* = SimpleName{
                     .arg = arg,
                 };
                 result = simple_name;
             }
             else if (self.localObj()) |local| {
-                var simple_name = try allocator.create(SimpleName);
+                var simple_name = try self.allocator.create(SimpleName);
                 simple_name.* = SimpleName{
                     .local = local,
                 };
@@ -1605,7 +1634,7 @@ pub fn AmlParser() type {
 
             if (self.matchOpCodeWord(.DebugOp)) {
                 printlnIndented(self.indent, "DebugObj()", .{});
-                result = try allocator.create(DebugObj);
+                result = try self.allocator.create(DebugObj);
             }
 
             return result;
@@ -1619,12 +1648,12 @@ pub fn AmlParser() type {
             if (self.matchOpCodeByte(.RefOfOp)) {
                 printlnIndented(self.indent, "RefOf()", .{});
                 if (try self.superName()) |source| {
-                    var ref_of = try allocator.create(RefOf);
+                    var ref_of = try self.allocator.create(RefOf);
                     ref_of.* = RefOf{
                         .source = source,
                     };
 
-                    var ref_type_opcode = try allocator.create(ReferenceTypeOpcode);
+                    var ref_type_opcode = try self.allocator.create(ReferenceTypeOpcode);
                     ref_type_opcode.* = ReferenceTypeOpcode{
                         .ref_of = ref_of,
                     };
@@ -1635,12 +1664,12 @@ pub fn AmlParser() type {
             else if (self.matchOpCodeByte(.DerefOfOp)) {
                 printlnIndented(self.indent, "DerefOf()", .{});
                 if (try self.termArg()) |obj_ref| {
-                    var deref_of = try allocator.create(DerefOf);
+                    var deref_of = try self.allocator.create(DerefOf);
                     deref_of.* = DerefOf{
                         .obj_ref = obj_ref,
                     };
 
-                    var ref_type_opcode = try allocator.create(ReferenceTypeOpcode);
+                    var ref_type_opcode = try self.allocator.create(ReferenceTypeOpcode);
                     ref_type_opcode.* = ReferenceTypeOpcode{
                         .deref_of = deref_of,
                     };
@@ -1653,14 +1682,14 @@ pub fn AmlParser() type {
                 if (try self.termArg()) |obj| {
                     if (try self.termArg()) |index_val| {
                         if (try self.target()) |tgt| {
-                            var index = try allocator.create(Index);
+                            var index = try self.allocator.create(Index);
                             index.* = Index{
                                 .obj = obj,
                                 .index = index_val,
                                 .target = tgt,
                             };
 
-                            var ref_type_opcode = try allocator.create(ReferenceTypeOpcode);
+                            var ref_type_opcode = try self.allocator.create(ReferenceTypeOpcode);
                             ref_type_opcode.* = ReferenceTypeOpcode{
                                 .index = index,
                             };
@@ -1679,7 +1708,7 @@ pub fn AmlParser() type {
             var result: ?*NameSpaceModifierObj = null;
 
             // if (try self.defAlias()) |def_alias| {
-            //     var ns_mod_obj = try allocator.create(NameSpaceModifierObj);
+            //     var ns_mod_obj = try self.allocator.create(NameSpaceModifierObj);
             //     ns_mod_obj.* = NameSpaceModifierObj{
             //         .def_alias = def_alias,
             //     };
@@ -1687,7 +1716,7 @@ pub fn AmlParser() type {
             // }
 
             if (try self.defScope()) |def_scope| {
-                var ns_mod_obj = try allocator.create(NameSpaceModifierObj);
+                var ns_mod_obj = try self.allocator.create(NameSpaceModifierObj);
                 ns_mod_obj.* = NameSpaceModifierObj{
                     .def_scope = def_scope,
                 };
@@ -1695,7 +1724,7 @@ pub fn AmlParser() type {
             }
 
             if (try self.defName()) |def_name| {
-                var ns_mod_obj = try allocator.create(NameSpaceModifierObj);
+                var ns_mod_obj = try self.allocator.create(NameSpaceModifierObj);
                 ns_mod_obj.* = NameSpaceModifierObj{
                     .def_name = def_name,
                 };
@@ -1709,49 +1738,49 @@ pub fn AmlParser() type {
             var result: ?*NamedObj = null;
 
             if (try self.defOpRegion()) |def_op_region| {
-                var named_obj = try allocator.create(NamedObj);
+                var named_obj = try self.allocator.create(NamedObj);
                 named_obj.* = NamedObj{
                     .def_op_region = def_op_region,
                 };
                 result = named_obj;
             }
             else if (try self.defField()) |def_field| {
-                var named_obj = try allocator.create(NamedObj);
+                var named_obj = try self.allocator.create(NamedObj);
                 named_obj.* = NamedObj{
                     .def_field = def_field,
                 };
                 result = named_obj;
             }
             else if (try self.defMethod()) |def_method| {
-                var named_obj = try allocator.create(NamedObj);
+                var named_obj = try self.allocator.create(NamedObj);
                 named_obj.* = NamedObj{
                     .def_method = def_method,
                 };
                 result = named_obj;
             }
             else if (try self.defDevice()) |def_device| {
-                var named_obj = try allocator.create(NamedObj);
+                var named_obj = try self.allocator.create(NamedObj);
                 named_obj.* = NamedObj{
                     .def_device = def_device,
                 };
                 result = named_obj;
             }
             else if (try self.defMutex()) |def_mutex| {
-                var named_obj = try allocator.create(NamedObj);
+                var named_obj = try self.allocator.create(NamedObj);
                 named_obj.* = NamedObj{
                     .def_mutex = def_mutex,
                 };
                 result = named_obj;
             }
             else if (try self.defCreateDWordField()) |def_create_dword_field| {
-                var named_obj = try allocator.create(NamedObj);
+                var named_obj = try self.allocator.create(NamedObj);
                 named_obj.* = NamedObj{
                     .def_create_dword_field = def_create_dword_field,
                 };
                 result = named_obj;
             }
             else if (try self.defProcessor()) |def_processor| {
-                var named_obj = try allocator.create(NamedObj);
+                var named_obj = try self.allocator.create(NamedObj);
                 named_obj.* = NamedObj{
                     .def_processor = def_processor,
                 };
@@ -1768,7 +1797,6 @@ pub fn AmlParser() type {
         }
 
         fn defOpRegion(self: *Self) !?*DefOpRegion {
-            // printlnIndented(self.indent, @src().fn_name, .{});
             self.indent += 2;
 
             var result: ?*DefOpRegion = null;
@@ -1778,8 +1806,8 @@ pub fn AmlParser() type {
                     if (self.advance()) |region_space| {
                         if (try self.termArg()) |region_offset| {
                             if (try self.termArg()) |region_len| {
-                                printIndented(self.indent, "OperationRegion ({s})", .{name_str.name});
-                                var def_op_region = try allocator.create(DefOpRegion);
+                                printlnIndented(self.indent, "OperationRegion ({s})", .{name_str.name});
+                                var def_op_region = try self.allocator.create(DefOpRegion);
                                 def_op_region.* = DefOpRegion{
                                     .name = name_str,
                                     .space = region_space,
@@ -1820,41 +1848,48 @@ pub fn AmlParser() type {
         // }
 
         fn defField(self: *Self) !?*DefField {
-            // printlnIndented(self.indent, @src().fn_name, .{});
             self.indent += 2;
 
             var result: ?*DefField = null;
 
             if (self.matchOpCodeWord(.FieldOp)) {
-                const pkg_start = self.loc;
-                if (self.pkgLength()) |pkg_len| {
+                if (self.pkgPayload()) |payload| {
+                    try self.enterContext(payload.len);
+
                     if (try self.nameString()) |name_str| {
                         printlnIndented(self.indent, "Field ({s})", .{name_str.name});
                         if (self.advance()) |flags| {
-                            var list = std.ArrayList(FieldElement).init(allocator);
+                            var list = std.ArrayList(FieldElement).init(self.allocator);
 
-                            while (self.loc < pkg_start + pkg_len) {
+                            var more_fields = true;
+                            while (more_fields) {
                                 if (try self.namedField()) |named_fld| {
                                     try list.append(FieldElement{
                                         .named_fld = named_fld,
                                     });
-                                } else if (try self.reservedField()) |reserved_fld| {
+                                }
+                                else if (try self.reservedField()) |reserved_fld| {
                                     try list.append(FieldElement{
                                         .reserved_fld = reserved_fld,
                                     });
                                 }
-
-                                var def_field = try allocator.create(DefField);
-                                def_field.* = DefField{
-                                    .name = name_str,
-                                    .flags = flags,
-                                    .field_elements = list.items,
-                                };
-
-                                result = def_field;
+                                else {
+                                    more_fields = false;
+                                }
                             }
+
+                            var def_field = try self.allocator.create(DefField);
+                            def_field.* = DefField{
+                                .name = name_str,
+                                .flags = flags,
+                                .field_elements = list.items,
+                            };
+
+                            result = def_field;
                         }
                     }
+
+                    self.exitContext();
                 }
             }
 
@@ -1863,13 +1898,12 @@ pub fn AmlParser() type {
         }
 
         fn namedField(self: *Self) !?*NamedField {
-            // printlnIndented(self.indent, @src().fn_name, .{});
             self.indent += 2;
 
             var result: ?*NamedField = null;
 
             if (self.nameSeg()) |name_seg| {
-                var named_fld = try allocator.create(NamedField);
+                var named_fld = try self.allocator.create(NamedField);
                 named_fld.* = NamedField{
                     .name = name_seg,
                     .bits = self.pkgLength() orelse 0,
@@ -1886,14 +1920,13 @@ pub fn AmlParser() type {
         }
 
         fn reservedField(self: *Self) !?*ReservedField {
-            // printlnIndented(self.indent, @src().fn_name, .{});
             self.indent += 2;
 
             var result: ?*ReservedField = null;
 
             if (self.matchByte(0x00)) {
                 if (self.pkgLength()) |field_len| {
-                    var reserved_fld = try allocator.create(ReservedField);
+                    var reserved_fld = try self.allocator.create(ReservedField);
                     reserved_fld.* = ReservedField{
                         .len = field_len,
                     };
@@ -1911,33 +1944,31 @@ pub fn AmlParser() type {
 
 
         fn defMethod(self: *Self) !?*DefMethod {
-            // printlnIndented(self.indent, @src().fn_name, .{});
             self.indent += 2;
 
             var result: ?*DefMethod = null;
+
             if (self.matchOpCodeByte(.MethodOp)) {
-                const start_loc = self.loc;
-                if (self.pkgLength()) |pkglen| {
-                    if (try self.nameString()) |name_str| {
-                        printlnIndented(self.indent, "Method ({s})", .{name_str.name});
+                if (self.pkgPayload()) |payload| {
+                    try self.enterContext(payload.len);
+                    {
+                        if (try self.nameString()) |name_str|
                         if (self.advance()) |flags| {
+                            printlnIndented(self.indent, "Method ({s})", .{name_str.name});
                             const arg_count = @intCast(u3, flags & 0x07);
-                            const len = pkglen - (self.loc - start_loc);
-                            var def_method = try allocator.create(DefMethod);
+                            var def_method = try self.allocator.create(DefMethod);
                             def_method.* = DefMethod{
                                 .name = name_str,
                                 .arg_count = arg_count,
                                 .flags = flags,
-                                .terms = undefined,
+                                .terms = try self.terms(0),
                             };
                             result = def_method;
 
                             _ = try self.ns_builder.addName(name_str.name, NamespaceObject{ .method = def_method });
-
-                            // def_method.terms = try terms(len);
-                            self.loc += len;
-                        }
+                        };
                     }
+                    self.exitContext();
                 }
             }
 
@@ -1946,31 +1977,32 @@ pub fn AmlParser() type {
         }
 
         fn defDevice(self: *Self) !?*DefDevice {
-            // printlnIndented(self.indent, @src().fn_name, .{});
             self.indent += 2;
 
             var result: ?*DefDevice = null;
 
             if (self.matchOpCodeWord(.DeviceOp)) {
-                const start_loc = self.loc;
-                if (self.pkgLength()) |pkglen| {
-                    if (try self.nameString()) |name_str| {
-                        printlnIndented(self.indent, "Device ({s})", .{name_str.name});
-                        const len = pkglen - (self.loc - start_loc);
-                        var def_device = try allocator.create(DefDevice);
-                        def_device.* = DefDevice{
-                            .name = name_str,
-                            .terms = undefined,
-                        };
-                        result = def_device;
+                if (self.pkgPayload()) |payload| {
+                    try self.enterContext(payload.len);
+                    {
+                        if (try self.nameString()) |name_str| {
+                            printlnIndented(self.indent, "Device ({s})", .{name_str.name});
+                            var def_device = try self.allocator.create(DefDevice);
+                            def_device.* = DefDevice{
+                                .name = name_str,
+                                .terms = undefined,
+                            };
+                            result = def_device;
 
-                        const ns_path = try self.ns_builder.addName(name_str.name, NamespaceObject{ .device = def_device });
-                        try self.ns_builder.pushNamespace(ns_path);
+                            const ns_path = try self.ns_builder.addName(name_str.name, NamespaceObject{ .device = def_device });
+                            try self.ns_builder.pushNamespace(ns_path);
 
-                        def_device.terms = try self.terms(len);
+                            def_device.terms = try self.terms(0);
 
-                        _ = self.ns_builder.popNamespace();
+                            _ = self.ns_builder.popNamespace();
+                        }
                     }
+                    self.exitContext();
                 }
             }
 
@@ -1979,7 +2011,6 @@ pub fn AmlParser() type {
         }
 
         fn defMutex(self: *Self) !?*DefMutex {
-            // printlnIndented(self.indent, @src().fn_name, .{});
             self.indent += 2;
 
             var result: ?*DefMutex = null;
@@ -1988,7 +2019,7 @@ pub fn AmlParser() type {
                 if (try self.nameString()) |name_str| {
                     if (self.advance()) |sync_flags| {
                         printlnIndented(self.indent, "Mutex ({s})", .{name_str.name});
-                        var def_mutex = try allocator.create(DefMutex);
+                        var def_mutex = try self.allocator.create(DefMutex);
                         def_mutex.* = DefMutex{
                             .name = name_str,
                             .sync_flags = sync_flags,
@@ -2012,7 +2043,7 @@ pub fn AmlParser() type {
                     if (try self.termArg()) |byte_index| {
                         if (try self.nameString()) |name_str| {
                             printlnIndented(self.indent, "CreateDWordField ({s})", .{name_str.name});
-                            var def_create_dword_field = try allocator.create(DefCreateDWordField);
+                            var def_create_dword_field = try self.allocator.create(DefCreateDWordField);
                             def_create_dword_field.* = DefCreateDWordField{
                                 .source_buff = source_buff,
                                 .byte_index = byte_index,
@@ -2034,35 +2065,34 @@ pub fn AmlParser() type {
             var result: ?*DefProcessor = null;
 
             if (self.matchOpCodeWord(.ProcessorOp)) {
-                const start_loc = self.loc;
-                if (self.pkgLength()) |pkg_len| {
-                    if (try self.nameString()) |name_str| {
-                        printlnIndented(self.indent, "Processor ({s})", .{name_str.name});
-                        if (self.advance()) |proc_id| {
-                            if (self.readDWord()) |pblk_addr| {
-                                if (self.advance()) |pblk_len| {
+                if (self.pkgPayload()) |payload| {
+                    try self.enterContext(payload.len);
+                    {
+                        if (try self.nameString()) |name_str|
+                        if (self.advance()) |proc_id|
+                        if (self.readDWord()) |pblk_addr|
+                        if (self.advance()) |pblk_len| {
+                            printlnIndented(self.indent, "Processor ({s})", .{name_str.name});
 
-                                const len = pkg_len - (self.loc - start_loc);
-                                var def_processor = try allocator.create(DefProcessor);
-                                def_processor.* = DefProcessor{
-                                    .name = name_str,
-                                    .proc_id = proc_id,
-                                    .pblk_addr = pblk_addr,
-                                    .pblk_len = pblk_len,
-                                    .terms = undefined,
-                                };
-                                result = def_processor;
+                        var def_processor = try self.allocator.create(DefProcessor);
+                        def_processor.* = DefProcessor{
+                            .name = name_str,
+                            .proc_id = proc_id,
+                            .pblk_addr = pblk_addr,
+                            .pblk_len = pblk_len,
+                            .terms = undefined,
+                        };
+                        result = def_processor;
 
-                                const ns_path = try self.ns_builder.addName(name_str.name, NamespaceObject{ .processor = def_processor });
-                                try self.ns_builder.pushNamespace(ns_path);
+                        const ns_path = try self.ns_builder.addName(name_str.name, NamespaceObject{ .processor = def_processor });
+                        try self.ns_builder.pushNamespace(ns_path);
 
-                                def_processor.terms = try self.terms(len);
+                        def_processor.terms = try self.terms(0);
 
-                                _ = self.ns_builder.popNamespace();
-                                }
-                            }
-                        }
+                        _ = self.ns_builder.popNamespace();
+                        };
                     }
+                    self.exitContext();
                 }
             }
 
@@ -2074,35 +2104,35 @@ pub fn AmlParser() type {
             var result: ?*TermArg = null;
 
             if (try self.expressionOpCode()) |expr_opcode| {
-                var term_arg = try allocator.create(TermArg);
+                var term_arg = try self.allocator.create(TermArg);
                 term_arg.* = TermArg{
                     .expr_opcode = expr_opcode,
                 };
                 result = term_arg;
             }
             else if (try self.dataObject()) |data_obj| {
-                var term_arg = try allocator.create(TermArg);
+                var term_arg = try self.allocator.create(TermArg);
                 term_arg.* = TermArg{
                     .data_obj = data_obj,
                 };
                 result = term_arg;
             }
             else if (self.argObj()) |arg_obj| {
-                var term_arg = try allocator.create(TermArg);
+                var term_arg = try self.allocator.create(TermArg);
                 term_arg.* = TermArg{
                     .arg_obj = arg_obj,
                 };
                 result = term_arg;
             }
             else if (self.localObj()) |local_obj| {
-                var term_arg = try allocator.create(TermArg);
+                var term_arg = try self.allocator.create(TermArg);
                 term_arg.* = TermArg{
                     .local_obj = local_obj,
                 };
                 result = term_arg;
             }
             else if (try self.nameString()) |name_str| {
-                var term_arg = try allocator.create(TermArg);
+                var term_arg = try self.allocator.create(TermArg);
                 term_arg.* = TermArg{
                     .name_str = name_str,
                 };
@@ -2117,18 +2147,20 @@ pub fn AmlParser() type {
 
             var result: ?*Package = null;
 
-            if (self.matchOpCodeByte(.PackageOp)) {
+            if (self.matchOpCodeByte(.PackageOp))
+            if (self.pkgPayload()) |payload| {
                 printlnIndented(self.indent, "Package()", .{});
-                if (self.pkgLength()) |_| {
+                try self.enterContext(payload.len);
+                {
                     if (self.advance()) |n_elements| {
-                        var list = std.ArrayList(PackageElement).init(allocator);
+                        var list = std.ArrayList(PackageElement).init(self.allocator);
                         var i: usize = 0;
                         while (i < n_elements) : (i += 1) {
                             if (try self.packageElement()) |pkg_elem| {
                                 try list.append(pkg_elem.*);
                             }
                         }
-                        var pkg = try allocator.create(Package);
+                        var pkg = try self.allocator.create(Package);
                         pkg.* = Package{
                             .n_elements = n_elements,
                             .elements = list.items,
@@ -2137,7 +2169,8 @@ pub fn AmlParser() type {
                         result = pkg;
                     }
                 }
-            }
+                self.exitContext();
+            };
 
             self.indent -= 2;
             return result;
@@ -2147,14 +2180,14 @@ pub fn AmlParser() type {
             var result: ?*PackageElement = null;
 
             if (try self.nameString()) |name_str| {
-                var pkg_elem = try allocator.create(PackageElement);
+                var pkg_elem = try self.allocator.create(PackageElement);
                 pkg_elem.* = PackageElement{
                     .name = name_str,
                 };
                 result = pkg_elem;
             }
             else if (try self.dataRefObject()) |data_ref_obj| {
-                var pkg_elem = try allocator.create(PackageElement);
+                var pkg_elem = try self.allocator.create(PackageElement);
                 pkg_elem.* = PackageElement{
                     .data_ref_obj = data_ref_obj,
                 };
@@ -2165,38 +2198,37 @@ pub fn AmlParser() type {
         }
 
 
-        fn res_desc_buffer(self: *Self) !?*ResourceDescriptorBuffer {
+        fn resourceDescriptorBuffer(self: *Self) !?*ResourceDescriptorBuffer {
             self.indent += 2;
 
             var result: ?*ResourceDescriptorBuffer = null;
 
             if (self.matchOpCodeByte(.BufferOp)) {
-                const start_loc = self.loc;
-                if (self.pkgLength()) |pkglen| {
+                if (self.pkgPayload()) |payload| {
+                    const payload_start = self.ctx.loc;
                     if (try self.termArg()) |size| {
-                        const len = pkglen - (self.loc - start_loc);
+                        const len = payload.len - (self.ctx.loc - payload_start);
 
-                        if (self.loc + len - 1 < self.block.len and
-                            self.block[self.loc + len - 2] & 0xF8 == @enumToInt(SmallResourceItemTag.end_tag) and
-                            self.block[self.loc + len - 1] == 0
+                        if (self.ctx.loc + len - 1 < self.ctx.block.len and
+                            self.ctx.block[self.ctx.loc + len - 2] & 0xF8 == @enumToInt(SmallResourceItemTag.end_tag) and
+                            self.ctx.block[self.ctx.loc + len - 1] == 0
                         ) {
-                            print("Buffer() <ResourceDescriptor>", .{});
-                            var list = std.ArrayList(ResourceDescriptor).init(allocator);
-                            while (try self.resourceDescriptor()) |res_desc| {
-                                try list.append(res_desc.*);
-                            }
-                            var buff = try allocator.create(ResourceDescriptorBuffer);
-                            buff.* = ResourceDescriptorBuffer{
-                                .size = size,
-                                .descriptors = list.items,
-                            };
+                            try self.enterContext(len);
+                            {
+                                print("Buffer() <ResourceDescriptor>", .{});
+                                var list = std.ArrayList(ResourceDescriptor).init(self.allocator);
+                                while (try self.resourceDescriptor()) |res_desc| {
+                                    try list.append(res_desc.*);
+                                }
+                                var buff = try self.allocator.create(ResourceDescriptorBuffer);
+                                buff.* = ResourceDescriptorBuffer{
+                                    .size = size,
+                                    .descriptors = list.items,
+                                };
 
-                            // TEMP hack
-                            if (self.loc < start_loc + pkglen) {
-                                self.loc = start_loc + pkglen;
+                                result = buff;
                             }
-
-                            result = buff;
+                            self.exitContext();
                         }
                     }
                 }
@@ -2212,48 +2244,40 @@ pub fn AmlParser() type {
             var result: ?*ResourceDescriptor = null;
 
             if (self.matchByte(@enumToInt(LargeResourceItemTag.dword_addr_space))) {
-                if (self.readWord()) |desc_len| {
-                    if (self.readByte()) |res_type| {
-                        if (self.readByte()) |general_flags| {
-                            if (self.readByte()) |type_flags| {
-                                if (self.readDWord()) |granularity| {
-                                    if (self.readDWord()) |min| {
-                                        if (self.readDWord()) |max| {
-                                            if (self.readDWord()) |translation_offset| {
-                                                if (self.readDWord()) |length| {
-                                                    println("DWord Address Space", .{});
-                                                    var addr_space = try allocator.create(DWordAddressSpaceDesc);
-                                                    addr_space.* = DWordAddressSpaceDesc{
-                                                        .resource_type = res_type,
-                                                        .general_flags = general_flags,
-                                                        .type_flags = type_flags,
-                                                        .granularity = granularity,
-                                                        .min = min,
-                                                        .max = max,
-                                                        .translation_offset = translation_offset,
-                                                        .length = length,
-                                                    };
+                if (self.readWord()) |desc_len|
+                if (self.readByte()) |res_type|
+                if (self.readByte()) |general_flags|
+                if (self.readByte()) |type_flags|
+                if (self.readDWord()) |granularity|
+                if (self.readDWord()) |min|
+                if (self.readDWord()) |max|
+                if (self.readDWord()) |translation_offset|
+                if (self.readDWord()) |length| {
+                    print("DWord Address Space", .{});
+                    var addr_space = try self.allocator.create(DWordAddressSpaceDesc);
+                    addr_space.* = DWordAddressSpaceDesc{
+                        .resource_type = res_type,
+                        .general_flags = general_flags,
+                        .type_flags = type_flags,
+                        .granularity = granularity,
+                        .min = min,
+                        .max = max,
+                        .translation_offset = translation_offset,
+                        .length = length,
+                    };
 
-                                                    if (desc_len > 23) {
-                                                        addr_space.res_source_index = self.advance();
-                                                        addr_space.res_source = self.readBytes(desc_len - 23);
-                                                    }
-
-                                                    var res_desc = try allocator.create(ResourceDescriptor);
-                                                    res_desc.* = ResourceDescriptor{
-                                                        .dword_addr_space = addr_space,
-                                                    };
-
-                                                    result = res_desc;
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
+                    if (desc_len > 23) {
+                        addr_space.res_source_index = self.advance();
+                        addr_space.res_source = self.readBytes(desc_len - 23);
                     }
-                }
+
+                    var res_desc = try self.allocator.create(ResourceDescriptor);
+                    res_desc.* = ResourceDescriptor{
+                        .dword_addr_space = addr_space,
+                    };
+
+                    result = res_desc;
+                };
             }
 
             self.indent -= 2;
@@ -2266,16 +2290,16 @@ pub fn AmlParser() type {
             var result: ?*Buffer = null;
 
             if (self.matchOpCodeByte(.BufferOp)) {
-                const start_loc = self.loc;
+                const start_loc = self.ctx.loc;
                 if (self.pkgLength()) |pkglen| {
                     printlnIndented(self.indent, "Buffer()", .{});
                     if (try self.termArg()) |size| {
-                        const len = pkglen - (self.loc - start_loc);
+                        const len = pkglen - (self.ctx.loc - start_loc);
                         if (self.readBytes(len)) |bytes| {
-                            var buff = try allocator.create(Buffer);
+                            var buff = try self.allocator.create(Buffer);
                             buff.* = Buffer{
                                 .size = size,
-                                .bytes = try allocator.dupe(u8, bytes),
+                                .bytes = try self.allocator.dupe(u8, bytes),
                             };
 
                             result = buff;
@@ -2292,14 +2316,14 @@ pub fn AmlParser() type {
             var result: ?*DataObject = null;
 
             if (try self.computationalData()) |comp_data| {
-                var data_obj = try allocator.create(DataObject);
+                var data_obj = try self.allocator.create(DataObject);
                 data_obj.* = DataObject{
                     .comp_data = comp_data,
                 };
                 result = data_obj;
             }
             else if (try self.package()) |pkg| {
-                var data_obj = try allocator.create(DataObject);
+                var data_obj = try self.allocator.create(DataObject);
                 data_obj.* = DataObject{
                     .package = pkg,
                 };
@@ -2317,57 +2341,57 @@ pub fn AmlParser() type {
             var result: ?*ComputationalData = null;
 
             if (self.byteConst()) |byte_const| {
-                var comp_data = try allocator.create(ComputationalData);
+                var comp_data = try self.allocator.create(ComputationalData);
                 comp_data.* = ComputationalData{
                     .byte_const = byte_const,
                 };
                 result = comp_data;
             }
             else if (self.wordConst()) |word_const| {
-                var comp_data = try allocator.create(ComputationalData);
+                var comp_data = try self.allocator.create(ComputationalData);
                 comp_data.* = ComputationalData{
                     .word_const = word_const,
                 };
                 result = comp_data;
             }
             else if (self.dwordConst()) |dword_const| {
-                var comp_data = try allocator.create(ComputationalData);
+                var comp_data = try self.allocator.create(ComputationalData);
                 comp_data.* = ComputationalData{
                     .dword_const = dword_const,
                 };
                 result = comp_data;
             }
             else if (self.qwordConst()) |qword_const| {
-                var comp_data = try allocator.create(ComputationalData);
+                var comp_data = try self.allocator.create(ComputationalData);
                 comp_data.* = ComputationalData{
                     .qword_const = qword_const,
                 };
                 result = comp_data;
             }
             else if (self.constObj()) |const_obj| {
-                var comp_data = try allocator.create(ComputationalData);
+                var comp_data = try self.allocator.create(ComputationalData);
                 comp_data.* = ComputationalData{
                     .const_obj = const_obj,
                 };
                 result = comp_data;
             }
             else if (self.revision()) |rev| {
-                var comp_data = try allocator.create(ComputationalData);
+                var comp_data = try self.allocator.create(ComputationalData);
                 comp_data.* = ComputationalData{
                     .revision = rev,
                 };
                 result = comp_data;
             }
             else if (try self.string()) |str| {
-                var comp_data = try allocator.create(ComputationalData);
+                var comp_data = try self.allocator.create(ComputationalData);
                 comp_data.* = ComputationalData{
                     .string = str,
                 };
                 result = comp_data;
             }
-            else if (try self.res_desc_buffer()) |res_desc_buff| {
+            else if (try self.resourceDescriptorBuffer()) |res_desc_buff| {
                 self.indent -= 2;
-                var comp_data = try allocator.create(ComputationalData);
+                var comp_data = try self.allocator.create(ComputationalData);
                 comp_data.* = ComputationalData{
                     .res_desc_buffer = res_desc_buff,
                 };
@@ -2376,7 +2400,7 @@ pub fn AmlParser() type {
             }
             else if (try self.buffer()) |buff| {
                 self.indent -= 2;
-                var comp_data = try allocator.create(ComputationalData);
+                var comp_data = try self.allocator.create(ComputationalData);
                 comp_data.* = ComputationalData{
                     .buffer = buff,
                 };
@@ -2388,7 +2412,6 @@ pub fn AmlParser() type {
         }
 
         fn byteConst(self: *Self) ?u8 {
-            // printlnIndented(self.indent, @src().fn_name, .{});
             
             var result: ?u8 = null;
 
@@ -2401,7 +2424,6 @@ pub fn AmlParser() type {
         }
 
         fn wordConst(self: *Self) ?u16 {
-            // printlnIndented(self.indent, @src().fn_name, .{});
             
             var result: ?u16 = null;
 
@@ -2414,7 +2436,6 @@ pub fn AmlParser() type {
         }
 
         fn dwordConst(self: *Self) ?u32 {
-            // printlnIndented(self.indent, @src().fn_name, .{});
             
             var result: ?u32 = null;
 
@@ -2427,7 +2448,6 @@ pub fn AmlParser() type {
         }
 
         fn qwordConst(self: *Self) ?u64 {
-            // printlnIndented(self.indent, @src().fn_name, .{});
             
             var result: ?u64 = null;
 
@@ -2440,7 +2460,6 @@ pub fn AmlParser() type {
         }
 
         fn constObj(self: *Self) ?u8 {
-            // printlnIndented(self.indent, @src().fn_name, .{});
             
             var result: ?u8 = null;
 
@@ -2472,7 +2491,7 @@ pub fn AmlParser() type {
             var result: ?[:0]const u8 = null;
             if (self.matchPrefix(.StringPrefix)) {
                 if (self.readString()) |str| {
-                    result = try allocator.dupeZ(u8, str);
+                    result = try self.allocator.dupeZ(u8, str);
                     print("\"{s}\"", .{result});
                 }
             }
@@ -2481,26 +2500,24 @@ pub fn AmlParser() type {
         }
 
         fn argObj(self: *Self) ?ArgObj {
-            // printlnIndented(self.indent, @src().fn_name, .{});
             
             var result: ?ArgObj = null;
 
             if (self.matchByteRange(@enumToInt(OpCodeByte.Arg0Op), @enumToInt(OpCodeByte.Arg6Op))) |arg| {
                 result = @intToEnum(ArgObj, arg);
-                print("{s}", .{@tagName(result.?)});
+                // print("{s}", .{@tagName(result.?)});
             }
 
             return result;
         }
 
         fn localObj(self: *Self) ?LocalObj {
-            // printlnIndented(self.indent, @src().fn_name, .{});
             
             var result: ?LocalObj = null;
 
             if (self.matchByteRange(@enumToInt(OpCodeByte.Local0Op), @enumToInt(OpCodeByte.Local7Op))) |local| {
                 result = @intToEnum(LocalObj, local);
-                print("{s}", .{@tagName(result.?)});
+                // print("{s}", .{@tagName(result.?)});
             }
 
             return result;
@@ -2512,18 +2529,17 @@ pub fn AmlParser() type {
         // }
 
         fn defScope(self: *Self) !?*DefScope {
-            // printlnIndented(self.indent, @src().fn_name, .{});
             self.indent += 2;
 
             var result: ?*DefScope = null;
 
             if (self.matchOpCodeByte(.ScopeOp)) {
-                const start_loc = self.loc;
+                const start_loc = self.ctx.loc;
                 if (self.pkgLength()) |pkglen| {
                     if (try self.nameString()) |name_str| {
                         printlnIndented(self.indent, "Scope ({s})", .{name_str.name});
-                        const len = pkglen - (self.loc - start_loc);
-                        var def_scope = try allocator.create(DefScope);
+                        const len = pkglen - (self.ctx.loc - start_loc);
+                        var def_scope = try self.allocator.create(DefScope);
                         def_scope.* = DefScope{
                             .name = name_str,
                             .terms = undefined,
@@ -2545,7 +2561,6 @@ pub fn AmlParser() type {
         }
 
         fn defName(self: *Self) !?*DefName {
-            // printlnIndented(self.indent, @src().fn_name, .{});
             self.indent += 2;
 
             var result: ?*DefName = null;
@@ -2554,8 +2569,8 @@ pub fn AmlParser() type {
                 if (try self.nameString()) |name_str| {
                     printIndented(self.indent, "Name ({s}, ", .{name_str.name});
                     if (try self.dataRefObject()) |data_ref_obj| {
-                        println(")", .{});
-                        var def_name = try allocator.create(DefName);
+                        printlnIndented(self.indent, ")", .{});
+                        var def_name = try self.allocator.create(DefName);
                         def_name.* = DefName{
                             .name = name_str,
                             .data_ref_obj = data_ref_obj,
@@ -2575,14 +2590,14 @@ pub fn AmlParser() type {
             var result: ?*DataRefObject = null;
 
             if (try self.dataObject()) |data_obj| {
-                var data_ref_obj = try allocator.create(DataRefObject);
+                var data_ref_obj = try self.allocator.create(DataRefObject);
                 data_ref_obj.* = DataRefObject{
                     .data_obj = data_obj,
                 };
                 result = data_ref_obj;
             }
             else if (try self.termArg()) |term_arg| {
-                var data_ref_obj = try allocator.create(DataRefObject);
+                var data_ref_obj = try self.allocator.create(DataRefObject);
                 data_ref_obj.* = DataRefObject{
                     .obj_ref = term_arg,
                 };
@@ -2593,8 +2608,17 @@ pub fn AmlParser() type {
         }
 
         fn pkgLength(self: *Self) ?u32 {
-            // printlnIndented(self.indent, @src().fn_name, .{});
             return self.matchPkgLength();
+        }
+
+        fn pkgPayload(self: *Self) ?[]const u8 {
+            const pkg_start = self.ctx.loc;
+            if (self.matchPkgLength()) |pkg_len| {
+                if (pkg_start + pkg_len < self.ctx.block.len) {
+                    return self.ctx.block[self.ctx.loc..(pkg_start + pkg_len)];
+                }
+            }
+            return null;
         }
 
         fn nameString(self: *Self) !?*NameString {
@@ -2602,28 +2626,28 @@ pub fn AmlParser() type {
 
             if(self.matchChar(.RootChar)) {
                 if (try self.namePath()) |name_path| {
-                    var name_string = try allocator.create(NameString);
+                    var name_string = try self.allocator.create(NameString);
                     name_string.* = NameString{
-                        .name = try std.mem.concat(allocator, u8, &[_][]const u8{ "\\", name_path }),
+                        .name = try std.mem.concat(self.allocator, u8, &[_][]const u8{ "\\", name_path }),
                     };
                     result = name_string;
                 } else if (self.nullName()) {
-                    var name_string = try allocator.create(NameString);
+                    var name_string = try self.allocator.create(NameString);
                     name_string.* = NameString{
-                        .name = try allocator.dupe(u8, "\\"),
+                        .name = try self.allocator.dupe(u8, "\\"),
                     };
                     result = name_string;
                 }
             }
             else if (try self.prefixPath()) |prefix_path| {
                 if (try self.namePath()) |name_path| {
-                    var name_string = try allocator.create(NameString);
+                    var name_string = try self.allocator.create(NameString);
                     name_string.* = NameString{
-                        .name = try std.mem.concat(allocator, u8, &[_][]const u8{ prefix_path, name_path }),
+                        .name = try std.mem.concat(self.allocator, u8, &[_][]const u8{ prefix_path, name_path }),
                     };
                     result = name_string;
                 } else if (self.nullName()) {
-                    var name_string = try allocator.create(NameString);
+                    var name_string = try self.allocator.create(NameString);
                     name_string.* = NameString{
                         .name = prefix_path,
                     };
@@ -2631,7 +2655,7 @@ pub fn AmlParser() type {
                 }
             }
             else if (try self.namePath()) |name_path| {
-                var name_string = try allocator.create(NameString);
+                var name_string = try self.allocator.create(NameString);
                 name_string.* = NameString{
                     .name = name_path,
                 };
@@ -2649,7 +2673,7 @@ pub fn AmlParser() type {
                 count += 1;
             }
             if (count > 0) {
-                var prefix_path = try allocator.alloc(u8, count);
+                var prefix_path = try self.allocator.alloc(u8, count);
                 std.mem.set(u8, prefix_path, '^');
                 result = prefix_path;
             }
@@ -2661,7 +2685,7 @@ pub fn AmlParser() type {
             var result: ?[]const u8 = null;
 
             if(self.nameSeg()) |name_seg| {
-                var name_path = try allocator.alloc(u8, name_seg.len);
+                var name_path = try self.allocator.alloc(u8, name_seg.len);
                 std.mem.copy(u8, name_path, name_seg[0..]);
                 result = name_path;
             } else if (try self.dualNamePath()) |dual_name_path| {
@@ -2731,7 +2755,7 @@ pub fn AmlParser() type {
             if (self.matchPrefix(.DualNamePrefix)) {
                 if (self.nameSeg()) |seg1| {
                     if (self.nameSeg()) |seg2| {
-                        result = try std.mem.concat(allocator, u8, &[_][]const u8{ seg1[0..], ".", seg2[0..] });
+                        result = try std.mem.concat(self.allocator, u8, &[_][]const u8{ seg1[0..], ".", seg2[0..] });
                     }
                 }
             }
@@ -2744,16 +2768,16 @@ pub fn AmlParser() type {
 
             if (self.matchPrefix(.MultiNamePrefix)) {
                 if (self.advance()) |seg_count| {
-                    var list = std.ArrayList([]const u8).init(allocator);
+                    var list = std.ArrayList([]const u8).init(self.allocator);
                     var i: usize = 0;
                     while (i < seg_count) : (i += 1) {
                         if (self.nameSeg()) |seg| {
-                            try list.append(try std.mem.dupe(allocator, u8, seg[0..]));
+                            try list.append(try std.mem.dupe(self.allocator, u8, seg[0..]));
                         } else {
                             return null;
                         }
                     }
-                    result = try std.mem.join(allocator, ".", list.items);
+                    result = try std.mem.join(self.allocator, ".", list.items);
                 }
             }
 
@@ -2761,7 +2785,6 @@ pub fn AmlParser() type {
         }
 
         fn nullName(self: *Self) bool {
-            // printlnIndented(self.indent, @src().fn_name, .{});
             return self.matchChar(.Null);
         }
 
@@ -2829,8 +2852,6 @@ pub fn AmlParser() type {
         }
 
         fn matchPkgLength(self: *Self) ?u32 {
-            // printlnIndented(self.indent, @src().fn_name, .{});
-
             var length: ?u32 = null;
 
             if (self.peekByte()) |lead_byte| {
@@ -2860,17 +2881,17 @@ pub fn AmlParser() type {
         }
 
         fn peekByte(self: *Self) ?u8 {
-            if (self.loc >= self.block.len) {
+            if (self.ctx.loc >= self.ctx.block.len) {
                 return null;
             }
-            return self.block[self.loc];
+            return self.ctx.block[self.ctx.loc];
         }
 
         fn peekWord(self: *Self) ?u16 {
-            if (self.loc >= self.block.len - 1) {
+            if (self.ctx.loc >= self.ctx.block.len - 1) {
                 return null;
             }
-            return self.block[self.loc] | @intCast(u16, self.block[self.loc + 1]) << 8;
+            return self.ctx.block[self.ctx.loc] | @intCast(u16, self.ctx.block[self.ctx.loc + 1]) << 8;
         }
 
         fn readByte(self: *Self) ?u8 {
@@ -2905,31 +2926,31 @@ pub fn AmlParser() type {
         }
 
         fn readBytes(self: *Self, len: usize) ?[]const u8 {
-            if (self.loc + len - 1 < self.block.len) {
-                self.loc += len;
-                return self.block[self.loc..(self.loc + len)];
+            if (self.ctx.loc + len - 1 < self.ctx.block.len) {
+                self.ctx.loc += len;
+                return self.ctx.block[self.ctx.loc..(self.ctx.loc + len)];
             }
             return null;
         }
 
         fn readString(self: *Self) ?[]const u8 {
-            const start = self.loc;
-            while (self.block[self.loc] != 0 and self.loc < self.block.len) {
-                self.loc += 1;
+            const start = self.ctx.loc;
+            while (self.ctx.block[self.ctx.loc] != 0 and self.ctx.loc < self.ctx.block.len) {
+                self.ctx.loc += 1;
             }
-            if (self.loc < self.block.len) {
-                self.loc += 1;
-                return self.block[start..(self.loc - 1)];
+            if (self.ctx.loc < self.ctx.block.len) {
+                self.ctx.loc += 1;
+                return self.ctx.block[start..(self.ctx.loc - 1)];
             }
             return null;
         }
 
         fn advance(self: *Self) ?u8 {
-            if (self.loc >= self.block.len) {
+            if (self.ctx.loc >= self.ctx.block.len) {
                 return null;
             }
-            self.loc += 1;
-            return self.block[self.loc - 1];
+            self.ctx.loc += 1;
+            return self.ctx.block[self.ctx.loc - 1];
         }
     };
 }
