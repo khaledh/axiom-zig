@@ -274,44 +274,44 @@ pub const LAnd = struct {
 
 pub const Buffer = struct {
     size: *TermArg,
-    bytes: []u8,
+    payload: *BufferPayload,
 };
 
-pub const ResourceDescriptorBuffer = struct {
-    size: *TermArg,
-    descriptors: []ResourceDescriptor,
+pub const BufferPayload = union(enum) {
+    bytes: []const u8,
+    res_desc: []ResourceDescriptor,
 };
 
-const ResourceDescriptor = union(enum) {
-    // irq: IrqDesc,
-    // dma: DmaDesc,
-    // dma_fixed: DmaFixedDesc,
-    // io: IoDesc,
-    // io_fixed: IoFixedDesc,
-    // mem_range24: MemoryRange24Desc,
-    // mem_range32: MemoryRange32Desc,
-    // mem_range32_fixed: MemoryRange32FixedDesc,
-    // vendor_defined: VendorDefinedDsec,
-    // qword_addr_space: QWordAddressSpaceDesc,
+pub const ResourceDescriptor = union(enum) {
+    // irq: *IrqDesc,
+    // dma: *DmaDesc,
+    // dma_fixed: *DmaFixedDesc,
+    io: *IoDesc,
+    // io_fixed: *IoFixedDesc,
+    // memory24: *Memory24Desc,
+    // memory32: *Memory32Desc,
+    memory32_fixed: *Memory32FixedDesc,
+    // vendor_defined: *VendorDefinedDsec,
+    // qword_addr_space: *QWordAddressSpaceDesc,
     dword_addr_space: *DWordAddressSpaceDesc,
-    // word_addr_space: WordAddressSpaceDesc,
-    // ext_addr_space: ExtendedAddressSpaceDesc,
-    // ext_interrupt: ExtendedInterruptDesc,
-    // gen_register: GenericRegisterDesc,
-    // gpio_conn: GpioConnectionDesc,
-    // gen_serial_conn: GenericSerialConnectionDesc,
-    // i2c_serial_conn: I2cSerialConnectionDesc,
-    // spi_serial_conn: SpiSerialConnectionDesc,
-    // uart_serial_conn: UartSerialConnectionDesc,
-    // cam_serial_conn: CameraSerialConnectionDesc,
-    // pin_func: PinFunctionDesc,
-    // pin_conf: PinConfigDesc,
-    // pin_group: PinGroupDesc,
-    // pin_group_func: PinGroupFuncDesc,
-    // pin_group_conf: PinGroupConfigDesc,
+    word_addr_space: *WordAddressSpaceDesc,
+    // ext_addr_space: *ExtendedAddressSpaceDesc,
+    ext_interrupt: *ExtendedInterruptDesc,
+    // gen_register: *GenericRegisterDesc,
+    // gpio_conn: *GpioConnectionDesc,
+    // gen_serial_conn: *GenericSerialConnectionDesc,
+    // i2c_serial_conn: *I2cSerialConnectionDesc,
+    // spi_serial_conn: *SpiSerialConnectionDesc,
+    // uart_serial_conn: *UartSerialConnectionDesc,
+    // cam_serial_conn: *CameraSerialConnectionDesc,
+    // pin_func: *PinFunctionDesc,
+    // pin_conf: *PinConfigDesc,
+    // pin_group: *PinGroupDesc,
+    // pin_group_func: *PinGroupFuncDesc,
+    // pin_group_conf: *PinGroupConfigDesc,
 };
 
-const SmallResourceItemTag = enum(u8) {
+pub const SmallResourceItemTag = enum(u8) {
     irq            = 0x04 << 3,
     dma            = 0x05 << 3,
     start_dep_func = 0x06 << 3,
@@ -323,29 +323,50 @@ const SmallResourceItemTag = enum(u8) {
     end_tag        = 0x0f << 3,
 };
 
-const LargeResourceItemTag = enum(u8) {
-    mem_range24       = 0x01 | 0x80,
-    gen_register      = 0x02 | 0x80,
-    vendor_defined    = 0x04 | 0x80,
-    mem_range32       = 0x05 | 0x80,
-    mem_range32_fixed = 0x06 | 0x80,
-    dword_addr_space  = 0x07 | 0x80,
-    word_addr_space   = 0x08 | 0x80,
-    ext_interrupt     = 0x09 | 0x80,
-    qword_addr_space  = 0x0a | 0x80,
-    ext_addr_space    = 0x0b | 0x80,
-    gpio_conn         = 0x0c | 0x80,
-    pin_func          = 0x0d | 0x80,
-    gen_serial_conn   = 0x0e | 0x80,
-    pin_conf          = 0x0f | 0x80,
-    pin_group         = 0x10 | 0x80,
-    pin_group_func    = 0x11 | 0x80,
-    pin_group_conf    = 0x12 | 0x80,
+pub const LargeResourceItemTag = enum(u8) {
+    memory24         = 0x01 | 0x80,
+    gen_register     = 0x02 | 0x80,
+    vendor_defined   = 0x04 | 0x80,
+    memory32         = 0x05 | 0x80,
+    memory32_fixed   = 0x06 | 0x80,
+    dword_addr_space = 0x07 | 0x80,
+    word_addr_space  = 0x08 | 0x80,
+    ext_interrupt    = 0x09 | 0x80,
+    qword_addr_space = 0x0a | 0x80,
+    ext_addr_space   = 0x0b | 0x80,
+    gpio_conn        = 0x0c | 0x80,
+    pin_func         = 0x0d | 0x80,
+    gen_serial_conn  = 0x0e | 0x80,
+    pin_conf         = 0x0f | 0x80,
+    pin_group        = 0x10 | 0x80,
+    pin_group_func   = 0x11 | 0x80,
+    pin_group_conf   = 0x12 | 0x80,
 };
 
-const DWordAddressSpaceDesc = struct {
+pub const AddressSpaceFlags = packed struct {
+    resource_usage: u1,
+    decode_type: u1,
+    min_addr_fixed: u1,
+    max_addr_fixed: u1,
+    reserved: u4 = 0,
+};
+
+pub const WordAddressSpaceDesc = struct {
     resource_type: u8,
-    general_flags: u8,
+    general_flags: AddressSpaceFlags,
+    type_flags: u8,
+    granularity: u16,
+    min: u16,
+    max: u16,
+    translation_offset: u16,
+    length: u16,
+    res_source: ?[]const u8 = null,
+    res_source_index: ?u8 = null,
+};
+
+pub const DWordAddressSpaceDesc = struct {
+    resource_type: u8,
+    general_flags: AddressSpaceFlags,
     type_flags: u8,
     granularity: u32,
     min: u32,
@@ -354,6 +375,45 @@ const DWordAddressSpaceDesc = struct {
     length: u32,
     res_source: ?[]const u8 = null,
     res_source_index: ?u8 = null,
+};
+
+pub const ReadWriteType = enum(u1) {
+    ReadOnly = 0,
+    ReadWrite = 1,
+};
+
+pub const Memory32FixedDesc = struct {
+    info: packed struct {
+        rw_type: ReadWriteType,
+        ignored: u7,
+    },
+    base: u32,
+    length: u32,
+};
+
+pub const ExtendedInterruptDesc = struct {
+    int_vector_flags: packed struct {
+        usage: u1,
+        mode: u1,
+        polarity: u1,
+        sharing: u1,
+        wake_cap: u1,
+        reserved: u3 = 0,
+    },
+    int_table: []const u32,
+    res_source: ?[]const u8 = null,
+    res_source_index: ?u8 = null,
+};
+
+pub const IoDesc = struct {
+    info: packed struct {
+        decode: u1,
+        ignored: u7,
+    },
+    addr_min: u16,
+    addr_max: u16,
+    addr_align: u8,
+    length: u8,
 };
 
 pub const DerefOf = struct {
@@ -647,7 +707,6 @@ pub const ComputationalData = union(enum) {
     string: [:0]const u8,
     revision: u64,
     buffer: *Buffer,
-    res_desc_buffer: *ResourceDescriptorBuffer,
 };
 
 // Namespace
@@ -878,10 +937,10 @@ pub fn AmlParser() type {
             // println("\n\n### Namespace\n", .{});
             // self.ns_builder.print();
 
-            // println("\n\n### AML Tree\n", .{});
+            println("\n\n### AML Tree\n", .{});
 
-            // var tree_printer = amltree.AmlTreePrinter.init();
-            // tree_printer.print(term_list);
+            var tree_printer = amltree.AmlTreePrinter.init();
+            tree_printer.print(term_list);
         }
 
         fn terms(self: *Self, len: usize) AllocationError![]TermObj {
@@ -2198,16 +2257,17 @@ pub fn AmlParser() type {
         }
 
 
-        fn resourceDescriptorBuffer(self: *Self) !?*ResourceDescriptorBuffer {
+        fn buffer(self: *Self) !?*Buffer {
             self.indent += 2;
 
-            var result: ?*ResourceDescriptorBuffer = null;
+            var result: ?*Buffer = null;
 
             if (self.matchOpCodeByte(.BufferOp)) {
-                if (self.pkgPayload()) |payload| {
-                    const payload_start = self.ctx.loc;
+                const start_loc = self.ctx.loc;
+                if (self.pkgLength()) |pkglen| {
                     if (try self.termArg()) |size| {
-                        const len = payload.len - (self.ctx.loc - payload_start);
+
+                        const len = pkglen - (self.ctx.loc - start_loc);
 
                         if (self.ctx.loc + len - 1 < self.ctx.block.len and
                             self.ctx.block[self.ctx.loc + len - 2] & 0xF8 == @enumToInt(SmallResourceItemTag.end_tag) and
@@ -2220,15 +2280,35 @@ pub fn AmlParser() type {
                                 while (try self.resourceDescriptor()) |res_desc| {
                                     try list.append(res_desc.*);
                                 }
-                                var buff = try self.allocator.create(ResourceDescriptorBuffer);
-                                buff.* = ResourceDescriptorBuffer{
+                                var buff_payload = try self.allocator.create(BufferPayload);
+                                buff_payload.* = BufferPayload{
+                                    .res_desc = list.items,
+                                };
+
+                                var buff = try self.allocator.create(Buffer);
+                                buff.* = Buffer{
                                     .size = size,
-                                    .descriptors = list.items,
+                                    .payload = buff_payload,
                                 };
 
                                 result = buff;
                             }
                             self.exitContext();
+                        }
+                        else if (self.readBytes(len)) |bytes| {
+                            printlnIndented(self.indent, "Buffer()", .{});
+                            var buff_payload = try self.allocator.create(BufferPayload);
+                            buff_payload.* = BufferPayload{
+                                .bytes = bytes,
+                            };
+
+                            var buff = try self.allocator.create(Buffer);
+                            buff.* = Buffer{
+                                .size = size,
+                                .payload = buff_payload,
+                            };
+
+                            result = buff;
                         }
                     }
                 }
@@ -2243,6 +2323,43 @@ pub fn AmlParser() type {
 
             var result: ?*ResourceDescriptor = null;
 
+            if (self.matchByte(@enumToInt(LargeResourceItemTag.word_addr_space))) {
+                if (self.readWord()) |desc_len|
+                if (self.readByte()) |res_type|
+                if (self.readByte()) |general_flags|
+                if (self.readByte()) |type_flags|
+                if (self.readWord()) |granularity|
+                if (self.readWord()) |min|
+                if (self.readWord()) |max|
+                if (self.readWord()) |translation_offset|
+                if (self.readWord()) |length| {
+                    print("WordSpace", .{});
+                    var addr_space = try self.allocator.create(WordAddressSpaceDesc);
+                    addr_space.* = WordAddressSpaceDesc{
+                        .resource_type = res_type,
+                        .general_flags = @bitCast(AddressSpaceFlags, general_flags),
+                        .type_flags = type_flags,
+                        .granularity = granularity,
+                        .min = min,
+                        .max = max,
+                        .translation_offset = translation_offset,
+                        .length = length,
+                    };
+
+                    if (desc_len > 13) {
+                        println("WordSpace: resource source and index", .{});
+                        addr_space.res_source_index = self.advance();
+                        addr_space.res_source = self.readBytes(desc_len - 13);
+                    }
+
+                    var res_desc = try self.allocator.create(ResourceDescriptor);
+                    res_desc.* = ResourceDescriptor{
+                        .word_addr_space = addr_space,
+                    };
+
+                    result = res_desc;
+                };
+            }
             if (self.matchByte(@enumToInt(LargeResourceItemTag.dword_addr_space))) {
                 if (self.readWord()) |desc_len|
                 if (self.readByte()) |res_type|
@@ -2253,11 +2370,11 @@ pub fn AmlParser() type {
                 if (self.readDWord()) |max|
                 if (self.readDWord()) |translation_offset|
                 if (self.readDWord()) |length| {
-                    print("DWord Address Space", .{});
+                    print("DWordSpace", .{});
                     var addr_space = try self.allocator.create(DWordAddressSpaceDesc);
                     addr_space.* = DWordAddressSpaceDesc{
                         .resource_type = res_type,
-                        .general_flags = general_flags,
+                        .general_flags = @bitCast(AddressSpaceFlags, general_flags),
                         .type_flags = type_flags,
                         .granularity = granularity,
                         .min = min,
@@ -2267,6 +2384,7 @@ pub fn AmlParser() type {
                     };
 
                     if (desc_len > 23) {
+                        println("DWordSpace: resource source and index", .{});
                         addr_space.res_source_index = self.advance();
                         addr_space.res_source = self.readBytes(desc_len - 23);
                     }
@@ -2279,33 +2397,81 @@ pub fn AmlParser() type {
                     result = res_desc;
                 };
             }
+            else if (self.matchByte(@enumToInt(LargeResourceItemTag.memory32_fixed))) {
+                if (self.readWord()) |_|
+                if (self.readByte()) |info|
+                if (self.readDWord()) |base|
+                if (self.readDWord()) |length| {
+                    print("Memory32Fixed", .{});
+                    var memory32_fixed = try self.allocator.create(Memory32FixedDesc);
+                    memory32_fixed.* = Memory32FixedDesc{
+                        .info = @bitCast(@TypeOf(memory32_fixed.info), info),
+                        .base = base,
+                        .length = length,
+                    };
 
-            self.indent -= 2;
-            return result;
-        }
+                    var res_desc = try self.allocator.create(ResourceDescriptor);
+                    res_desc.* = ResourceDescriptor{
+                        .memory32_fixed = memory32_fixed,
+                    };
 
-        fn buffer(self: *Self) !?*Buffer {
-            self.indent += 2;
+                    result = res_desc;
+                };
+            }
+            else if (self.matchByte(@enumToInt(LargeResourceItemTag.ext_interrupt))) {
+                if (self.readWord()) |desc_len|
+                if (self.readByte()) |int_vector_flags|
+                if (self.readByte()) |int_table_len| {
+                    print("ExtendedInterrupt", .{});
 
-            var result: ?*Buffer = null;
-
-            if (self.matchOpCodeByte(.BufferOp)) {
-                const start_loc = self.ctx.loc;
-                if (self.pkgLength()) |pkglen| {
-                    printlnIndented(self.indent, "Buffer()", .{});
-                    if (try self.termArg()) |size| {
-                        const len = pkglen - (self.ctx.loc - start_loc);
-                        if (self.readBytes(len)) |bytes| {
-                            var buff = try self.allocator.create(Buffer);
-                            buff.* = Buffer{
-                                .size = size,
-                                .bytes = try self.allocator.dupe(u8, bytes),
-                            };
-
-                            result = buff;
-                        }
+                    var list = std.ArrayList(u32).init(self.allocator);
+                    while (self.readDWord()) |int_num| {
+                        try list.append(int_num);
                     }
-                }
+                    
+                    var ext_interrupt = try self.allocator.create(ExtendedInterruptDesc);
+                    ext_interrupt.* = ExtendedInterruptDesc{
+                        .int_vector_flags = @bitCast(@TypeOf(ext_interrupt.int_vector_flags), int_vector_flags),
+                        .int_table = list.items,
+                    };
+
+                    if (desc_len > 2 + int_table_len * 4) {
+                        println("ExtendedInterrupt: resource source and index", .{});
+                        ext_interrupt.res_source_index = self.advance();
+                        ext_interrupt.res_source = self.readBytes(desc_len - (2 + int_table_len * 4));
+                    }
+
+                    var res_desc = try self.allocator.create(ResourceDescriptor);
+                    res_desc.* = ResourceDescriptor{
+                        .ext_interrupt = ext_interrupt,
+                    };
+
+                    result = res_desc;
+                };
+            }
+            else if (self.matchBits(@enumToInt(SmallResourceItemTag.io), 0x78)) |_| {
+                if (self.readByte()) |info|
+                if (self.readWord()) |addr_min|
+                if (self.readWord()) |addr_max|
+                if (self.readByte()) |addr_align|
+                if (self.readByte()) |length| {
+                    print("IO", .{});
+                    var io_desc = try self.allocator.create(IoDesc);
+                    io_desc.* = IoDesc{
+                        .info = @bitCast(@TypeOf(io_desc.info), info),
+                        .addr_min = addr_min,
+                        .addr_max = addr_max,
+                        .addr_align = addr_align,
+                        .length = length,
+                    };
+
+                    var res_desc = try self.allocator.create(ResourceDescriptor);
+                    res_desc.* = ResourceDescriptor{
+                        .io = io_desc,
+                    };
+
+                    result = res_desc;
+                };
             }
 
             self.indent -= 2;
@@ -2388,15 +2554,6 @@ pub fn AmlParser() type {
                     .string = str,
                 };
                 result = comp_data;
-            }
-            else if (try self.resourceDescriptorBuffer()) |res_desc_buff| {
-                self.indent -= 2;
-                var comp_data = try self.allocator.create(ComputationalData);
-                comp_data.* = ComputationalData{
-                    .res_desc_buffer = res_desc_buff,
-                };
-                result = comp_data;
-                self.indent += 2;
             }
             else if (try self.buffer()) |buff| {
                 self.indent -= 2;
@@ -2830,6 +2987,15 @@ pub fn AmlParser() type {
             return self.matchByteRange(@enumToInt(start), @enumToInt(end));
         }
 
+        fn matchBits(self: *Self, byte: u8, mask: u8) ?u8 {
+            if (self.peekByte()) |b| {
+                if (b & mask == byte) {
+                    return self.advance();
+                }
+            }
+            return null;
+        }
+
         fn matchByte(self: *Self, byte: u8) bool {
             // // printlnIndented(self.indent, @src().fn_name, .{});
             if (self.peekByte()) |b| {
@@ -2927,8 +3093,30 @@ pub fn AmlParser() type {
 
         fn readBytes(self: *Self, len: usize) ?[]const u8 {
             if (self.ctx.loc + len - 1 < self.ctx.block.len) {
-                self.ctx.loc += len;
+                defer self.ctx.loc += len;
                 return self.ctx.block[self.ctx.loc..(self.ctx.loc + len)];
+            }
+            return null;
+        }
+
+        fn readWords(self: *Self, len: usize) ?[]align(1) const u16 {
+            if (self.readBytes(len * 2)) |bytes| {
+                return std.mem.bytesAsSlice(u16, bytes);
+            }
+            return null;
+        }
+
+        fn readDWords(self: *Self, len: usize) ?[]align(1) const u32 {
+            if (self.readBytes(len * 4)) |bytes| {
+                println("bytes = {*}", .{bytes.ptr});
+                return std.mem.bytesAsSlice(u32, bytes);
+            }
+            return null;
+        }
+
+        fn readQWords(self: *Self, len: usize) ?[]align(1) const u64 {
+            if (self.readBytes(len * 8)) |bytes| {
+                return std.mem.bytesAsSlice(u64, bytes);
             }
             return null;
         }

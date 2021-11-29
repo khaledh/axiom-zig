@@ -378,3 +378,19 @@ fn out16(port: u16, value: u16) void {
         : "dx", "ax"
     );
 }
+
+pub fn panic(msg: []const u8, error_return_trace: ?*std.builtin.StackTrace) noreturn {
+    // var buf: [5 * 1024]u8 = undefined;
+    // var fbs = std.io.fixedBufferStream(&buf);
+
+    // if (error_return_trace) |ret_trace| {
+    //     ret_trace.format("", .{}, fbs.writer()) catch unreachable;
+    // }
+
+    // println("\n\npanic: {s}\nStack Trace:\n{s}", .{msg, fbs.getWritten()});
+
+    _ = error_return_trace;
+    println("\n\npanic: {s}\n", .{msg});
+
+    halt();
+}

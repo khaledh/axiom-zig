@@ -7,35 +7,37 @@ const io = @import("../io.zig");
 const AmlTreeVisitor = struct {
     const Self = @This();
 
-    visitTerms: fn (self: *Self, terms: []const ast.TermObj) void,
-    visitTermObj: fn (self: *Self, term_obj: *const ast.TermObj) void,
-    visitObject: fn (self: *Self, obj: *const ast.Object) void,
-    visitStatementOpcode: fn (self: *Self, obj: *const ast.StatementOpcode) void,
-    visitExpressionOpcode: fn (self: *Self, obj: *const ast.ExpressionOpcode) void,
-    visitNameSpaceModifierObj: fn (self: *Self, obj: *const ast.NameSpaceModifierObj) void,
-    visitNamedObj: fn (self: *Self, obj: *const ast.NamedObj) void,
-    visitDefScope: fn (self: *Self, obj: *const ast.DefScope) void,
-    visitDefName: fn (self: *Self, obj: *const ast.DefName) void,
-    visitDataObject: fn (self: *Self, obj: *const ast.DataObject) void,
-    visitComputationalData: fn (self: *Self, obj: *const ast.ComputationalData) void,
-    visitByteConst: fn (self: *Self, byte_const: u8) void,
-    visitWordConst: fn (self: *Self, word_const: u16) void,
-    visitDWordConst: fn (self: *Self, dword_const: u32) void,
-    visitQWordConst: fn (self: *Self, qword_const: u64) void,
-    visitConstObj: fn (self: *Self, const_obj: u8) void,
-    visitRevision: fn (self: *Self, revision: u64) void,
-    visitString: fn (self: *Self,  [:0]const u8) void,
-    visitBuffer: fn (self: *Self,  *const ast.Buffer) void,
-    visitDefDevice: fn (self: *Self,  *const ast.DefDevice) void,
-    visitDefOpRegion: fn (self: *Self,  *const ast.DefOpRegion) void,
-    visitDefField: fn (self: *Self,  *const ast.DefField) void,
-    visitFieldElement: fn (self: *Self,  *const ast.FieldElement) void,
-    visitNamedField: fn (self: *Self,  *const ast.NamedField) void,
-    visitReservedField: fn (self: *Self,  *const ast.ReservedField) void,
-    visitDefMethod: fn (self: *Self,  *const ast.DefMethod) void,
-    visitPackage: fn (self: *Self,  *const ast.Package) void,
-    visitDataRefObject: fn (self: *Self,  *const ast.DataRefObject) void,
-    visitNameString: fn (self: *Self,  *const ast.NameString) void,
+    visitTerms: fn (*Self, []const ast.TermObj) void,
+    visitTermObj: fn (*Self, *const ast.TermObj) void,
+    visitObject: fn (*Self, *const ast.Object) void,
+    visitStatementOpcode: fn (*Self, *const ast.StatementOpcode) void,
+    visitExpressionOpcode: fn (*Self, *const ast.ExpressionOpcode) void,
+    visitNameSpaceModifierObj: fn (*Self, *const ast.NameSpaceModifierObj) void,
+    visitNamedObj: fn (*Self, *const ast.NamedObj) void,
+    visitDefScope: fn (*Self, *const ast.DefScope) void,
+    visitDefName: fn (*Self, *const ast.DefName) void,
+    visitDataObject: fn (*Self, *const ast.DataObject) void,
+    visitComputationalData: fn (*Self, *const ast.ComputationalData) void,
+    visitByteConst: fn (*Self, u8) void,
+    visitWordConst: fn (*Self, u16) void,
+    visitDWordConst: fn (*Self, u32) void,
+    visitQWordConst: fn (*Self, u64) void,
+    visitConstObj: fn (*Self, u8) void,
+    visitRevision: fn (*Self, u64) void,
+    visitString: fn (*Self, [:0]const u8) void,
+    visitBuffer: fn (*Self, *const ast.Buffer) void,
+    visitBufferResourceDescriptors: fn (*Self, []const ast.ResourceDescriptor) void,
+    visitDefDevice: fn (*Self, *const ast.DefDevice) void,
+    visitDefOpRegion: fn (*Self, *const ast.DefOpRegion) void,
+    visitDefField: fn (*Self, *const ast.DefField) void,
+    visitFieldElement: fn (*Self, *const ast.FieldElement) void,
+    visitNamedField: fn (*Self, *const ast.NamedField) void,
+    visitReservedField: fn (*Self, *const ast.ReservedField) void,
+    visitDefMethod: fn (*Self, *const ast.DefMethod) void,
+    visitDefMutex: fn (*Self, *const ast.DefMutex) void,
+    visitPackage: fn (*Self, *const ast.Package) void,
+    visitDataRefObject: fn (*Self, *const ast.DataRefObject) void,
+    visitNameString: fn (*Self, *const ast.NameString) void,
 
     fn acceptTerms(self: *Self, terms: []const ast.TermObj) void {
         for (terms) |*term_obj| {
@@ -48,6 +50,17 @@ const AmlTreeVisitor = struct {
             .obj => |obj| self.visitObject(self, obj),
             .stmt_opcode => |stmt_opcode| self.visitStatementOpcode(self, stmt_opcode),
             .expr_opcode => |expr_opcode| self.visitExpressionOpcode(self, expr_opcode),
+        }
+    }
+
+    fn acceptTermArg(self: *Self, term_arg: *const ast.TermArg) void {
+        switch (term_arg.*) {
+            .expr_opcode => |expr_opcode| self.visitExpressionOpcode(self, expr_opcode),
+            .data_obj => |data_obj| self.visitDataObject(self, data_obj),
+            // .arg_obj => |arg_obj| self.visitArgObj(self, arg_obj),
+            // .local_obj => |local_obj| self.visitLocalObj(self, local_obj),
+            .name_str => |name_str| self.visitNameString(self, name_str),
+            else => {},
         }
     }
 
@@ -105,7 +118,14 @@ const AmlTreeVisitor = struct {
             .revision => |revision| self.visitRevision(self, revision),
             .string => |str| self.visitString(self, str),
             .buffer => |buff| self.visitBuffer(self, buff),
-            .res_desc_buffer => {},
+        }
+    }
+
+    fn acceptBufferPayload(self: *Self, buff_payload: *ast.BufferPayload) void {
+        switch (buff_payload.*) {
+            // .bytes => |bytes| self.visitBufferBytes(self, bytes),
+            .res_desc => |res_desc| self.visitBufferResourceDescriptors(self, res_desc),
+            else => {},
         }
     }
 
@@ -115,6 +135,7 @@ const AmlTreeVisitor = struct {
             .def_op_region => |def_op_region| self.visitDefOpRegion(self, def_op_region),
             .def_field => |def_field| self.visitDefField(self, def_field),
             .def_method => |def_method| self.visitDefMethod(self, def_method),
+            .def_mutex => |def_mutex| self.visitDefMutex(self, def_mutex),
             else => {},
         }
     }
@@ -180,6 +201,7 @@ pub const AmlTreePrinter = struct {
                 .visitRevision = visitRevision,
                 .visitString = visitString,
                 .visitBuffer = visitBuffer,
+                .visitBufferResourceDescriptors = visitBufferResourceDescriptors,
                 .visitDefDevice = visitDefDevice,
                 .visitDefOpRegion = visitDefOpRegion,
                 .visitDefField = visitDefField,
@@ -187,6 +209,7 @@ pub const AmlTreePrinter = struct {
                 .visitNamedField = visitNamedField,
                 .visitReservedField = visitReservedField,
                 .visitDefMethod = visitDefMethod,
+                .visitDefMutex = visitDefMutex,
                 .visitPackage = visitPackage,
                 .visitDataRefObject = visitDataRefObject,
                 .visitNameString = visitNameString,
@@ -204,6 +227,10 @@ pub const AmlTreePrinter = struct {
 
     fn visitTermObj(visitor: *AmlTreeVisitor, term_obj: *const ast.TermObj) void {
         visitor.acceptTermObj(term_obj);
+    }
+
+    fn visitTermArg(visitor: *AmlTreeVisitor, term_arg: *const ast.TermArg) void {
+        visitor.acceptTermArg(term_arg);
     }
 
     fn visitObject(visitor: *AmlTreeVisitor, obj: *const ast.Object) void {
@@ -305,13 +332,54 @@ pub const AmlTreePrinter = struct {
         io.print("\"{s}\"", .{str});
     }
 
-    fn visitBuffer(visitor: *AmlTreeVisitor, _: *const ast.Buffer) void {
-        const self = @fieldParentPtr(Self, "visitor", visitor);
+    fn visitBuffer(visitor: *AmlTreeVisitor, buff: *const ast.Buffer) void {
+        // const self = @fieldParentPtr(Self, "visitor", visitor);
 
-        io.println("Buffer", .{});
-        self.indent += 2;
-        
-        self.indent -= 2;
+        if (buff.payload.* == .bytes) {
+            io.print("Buffer[", .{});
+            visitor.acceptTermArg(buff.size);
+            io.print("]", .{});
+        }
+        visitor.acceptBufferPayload(buff.payload);
+    }
+
+    fn getAddressSpaceResourceType(resource_type: u8) []const u8 {
+        return switch (resource_type) {
+            0 => "Memory range",
+            1 => "I/O range",
+            2 => "Bus number range",
+            3...191 => "Reserved (invalid resource type)",
+            else => "Hardware vendor defined"
+        };
+    }
+
+    fn visitBufferResourceDescriptors(visitor: *AmlTreeVisitor, res_desc: []const ast.ResourceDescriptor) void {
+        const self = @fieldParentPtr(Self, "visitor", visitor);
+        _ = visitor;
+
+        if (res_desc.len > 1) {
+            io.println("ResourceTemplate () {{", .{});
+            self.indent += 2;
+        }
+        for (res_desc) |res| {
+            if (res_desc.len > 1) {
+                io.printIndented(self.indent, "", .{});
+            }
+            switch (res) {
+                .word_addr_space => |word_space| self.printWordAddressSpace(word_space),
+                .dword_addr_space => |dword_space| self.printDWordAddressSpace(dword_space),
+                .memory32_fixed => |memory32_fixed| self.printMemory32Fixed(memory32_fixed),
+                .ext_interrupt => |ext_interrupt| self.printExtendedInterrupt(ext_interrupt),
+                .io => |io_desc| self.printIo(io_desc),
+            }
+            if (res_desc.len > 1) {
+                io.println("", .{});
+            }
+        }
+        if (res_desc.len > 1) {
+            self.indent -= 2;
+            io.printIndented(self.indent, "}}", .{});
+        }
     }
 
     fn visitDefDevice(visitor: *AmlTreeVisitor, def_device: *const ast.DefDevice) void {
@@ -370,6 +438,12 @@ pub const AmlTreePrinter = struct {
         self.indent -= 2;
     }
 
+    fn visitDefMutex(visitor: *AmlTreeVisitor, def_mutex: *const ast.DefMutex) void {
+        const self = @fieldParentPtr(Self, "visitor", visitor);
+
+        io.printlnIndented(self.indent, "Mutex ({s})", .{def_mutex.name.name});
+    }
+
     fn visitPackage(visitor: *AmlTreeVisitor, pkg: *const ast.Package) void {
         io.print("[", .{});
         var i: usize = 0;
@@ -388,6 +462,108 @@ pub const AmlTreePrinter = struct {
 
     fn visitNameString(_: *AmlTreeVisitor, name_str: *const ast.NameString) void {
         io.print("{s}", .{name_str.name});
+    }
+
+    fn printWordAddressSpace(self: *Self, word_space: *ast.WordAddressSpaceDesc) void {
+        _ = self;
+        _ = word_space;
+        io.print("WordSpace (...)", .{});
+    }
+
+    fn printDWordAddressSpace(self: *Self, dword_space: *ast.DWordAddressSpaceDesc) void {
+        const resource_type = getAddressSpaceResourceType(dword_space.resource_type);
+        const usage = if (dword_space.general_flags.resource_usage == 0) "ResourceProducer" else "ResourceConsumer";
+        const decode = if (dword_space.general_flags.decode_type == 0) "PosDecode" else "SubDecode";
+        const mif = if (dword_space.general_flags.min_addr_fixed == 0) "MinNotFixed" else "MinFixed";
+        const maf = if (dword_space.general_flags.max_addr_fixed == 0) "MaxNotFixed" else "MaxFixed";
+        const flags_rw = if ((dword_space.type_flags & 0x01) == 0) "ReadOnly" else "ReadWrite";
+        const flags_mt = switch (@intCast(u2, dword_space.type_flags >> 1 & 0x03)) {
+            0 => "NonCacheable",
+            1 => "Cacheable",
+            2 => "WriteCombining",
+            3 => "Prefetchable",
+        };
+        const flags_mrt = switch (@intCast(u2, dword_space.type_flags >> 3 & 0x03)) {
+            0 => "AddressRangeMemory",
+            1 => "AddressRangeReserved",
+            2 => "AddressRangeACPI",
+            3 => "AddressRangeNVS",
+        };
+        const flags_tt = if (dword_space.type_flags >> 5 & 0x01 == 0) "TypeStatic" else "TypeTranslation";
+
+        io.println("DWordSpace (", .{});
+        self.indent += 2;
+        io.printlnIndented(self.indent, "0x{x:0>2}{s}, // ResourceType ({s})", .{dword_space.resource_type, " " ** 16, resource_type});
+        // io.printlnIndented(self.indent, "// 0x{x:0>2}{s} // GeneralFlags", .{@bitCast(u8, dword_space.general_flags), " " ** 14});
+        io.printlnIndented(self.indent, "{s: <20}, //   Bit    [0] ResourceUsage", .{usage});
+        io.printlnIndented(self.indent, "{s: <20}, //   Bit    [1] Decode", .{decode});
+        io.printlnIndented(self.indent, "{s: <20}, //   Bit    [2] IsMinFixed", .{mif});
+        io.printlnIndented(self.indent, "{s: <20}, //   Bit    [3] IsMaxFixed", .{maf});
+        io.printlnIndented(self.indent, "{s: <20}  //   Bits [7:4] Reserved", .{" "});
+        io.printlnIndented(self.indent, "0x{x:0>2}{s}, // TypeSpecificFlags ({s})", .{dword_space.type_flags, " " ** 16, resource_type});
+        io.printlnIndented(self.indent, "// {s: <18} //   Bit    [0] ReadWriteType", .{flags_rw});
+        io.printlnIndented(self.indent, "// {s: <18} //   Bits [2:1] MemType", .{flags_mt});
+        io.printlnIndented(self.indent, "// {s: <18} //   Bits [4:3] MemoryRangeType", .{flags_mrt});
+        io.printlnIndented(self.indent, "// {s: <18} //   Bit    [5] TranslationType", .{flags_tt});
+        io.printlnIndented(self.indent, "{s: <20}  //   Bits [7:6] Reserved", .{" "});
+        io.printlnIndented(self.indent, "0x{x:0>16}{s}, // Granularity", .{dword_space.granularity, "  "});
+        io.printlnIndented(self.indent, "0x{x:0>16}{s}, // AddressMinimum", .{dword_space.min, "  "});
+        io.printlnIndented(self.indent, "0x{x:0>16}{s}, // AddressMaximum", .{dword_space.max, "  "});
+        io.printlnIndented(self.indent, "0x{x:0>16}{s}, // AddressTranslation", .{dword_space.translation_offset, "  "});
+        io.printlnIndented(self.indent, "0x{x:0>16}{s}, // RangeLength", .{dword_space.length, "  "});
+        if (dword_space.res_source_index) |res_source_index| {
+            io.printlnIndented(self.indent, "0x{x:0>16}{s}, // ResourceSourceIndex", .{res_source_index, " " ** 16});
+        }
+        if (dword_space.res_source) |res_source| {
+            io.printlnIndented(self.indent, "{s: <20}, // ResourceSource", .{res_source});
+        }
+        //     )                   // DescriptorName
+
+        self.indent -= 2;
+        io.printIndented(self.indent, ")", .{});
+    }
+
+    fn printMemory32Fixed(self: *Self, memory32_fixed: *ast.Memory32FixedDesc) void {
+        const info_rw = if (memory32_fixed.info.rw_type == .ReadOnly) "ReadOnly" else "ReadWrite";
+
+        io.println("Memory32Fixed (", .{});
+        self.indent += 2;
+        io.printlnIndented(self.indent, "// 0x{x:0>2}{s}  // Information", .{@bitCast(u8, memory32_fixed.info), " " ** 13});
+        io.printlnIndented(self.indent, "{s: <20}, //   Bit    [0] ReadWriteType", .{info_rw});
+        io.printlnIndented(self.indent, "{s: <20}  //   Bits [7:6] Reserved", .{" "});
+        io.printlnIndented(self.indent, "0x{x:0>16}{s}, // AddressBase", .{memory32_fixed.base, "  "});
+        io.printlnIndented(self.indent, "0x{x:0>16}{s}, // RangeLength", .{memory32_fixed.length, "  "});
+        //     )                   // DescriptorName
+
+        self.indent -= 2;
+        io.printIndented(self.indent, ")", .{});
+    }
+
+    fn printExtendedInterrupt(_: *Self, ext_interrupt: *ast.ExtendedInterruptDesc) void {
+        const usage = if (ext_interrupt.int_vector_flags.usage == 0) "ResourceProducer" else "ResourceConsumer";
+        const mode = if (ext_interrupt.int_vector_flags.mode == 0) "Level" else "Edges";
+        const polarity = if (ext_interrupt.int_vector_flags.polarity == 0) "ActiveHigh" else "ActiveLow";
+        const sharing = if (ext_interrupt.int_vector_flags.sharing == 0) "Exclusive" else "Shared";
+        const wake_cap = if (ext_interrupt.int_vector_flags.wake_cap == 0) "NotWakeCapable" else "WakeCapable";
+
+        io.print("Interrupt (", .{});
+        io.print("{s}, {s}, {s}, {s}, {s}) {{", .{usage, mode, polarity, sharing, wake_cap});
+        for (ext_interrupt.int_table) |int_num, i| {
+            io.print("{}", .{int_num});
+            if (i < ext_interrupt.int_table.len - 1) {
+                io.print(", ", .{});
+            }
+        }
+        io.print("}}", .{});
+        //     )                   // DescriptorName
+    }
+
+    fn printIo(_: *Self, io_desc: *ast.IoDesc) void {
+        const decode = if (io_desc.info.decode == 0) "Decode10" else "Decode16";
+
+        io.print("IO (", .{});
+        io.print("{s}, 0x{x:0>4}, 0x{x:0>4}, {}, {})", .{decode, io_desc.addr_min, io_desc.addr_max, io_desc.addr_align, io_desc.length});
+        //     )                   // DescriptorName
     }
 
 };
