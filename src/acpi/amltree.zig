@@ -343,16 +343,6 @@ pub const AmlTreePrinter = struct {
         visitor.acceptBufferPayload(buff.payload);
     }
 
-    fn getAddressSpaceResourceType(resource_type: u8) []const u8 {
-        return switch (resource_type) {
-            0 => "Memory range",
-            1 => "I/O range",
-            2 => "Bus number range",
-            3...191 => "Reserved (invalid resource type)",
-            else => "Hardware vendor defined"
-        };
-    }
-
     fn visitBufferResourceDescriptors(visitor: *AmlTreeVisitor, res_desc: []const ast.ResourceDescriptor) void {
         const self = @fieldParentPtr(Self, "visitor", visitor);
         _ = visitor;
@@ -395,21 +385,27 @@ pub const AmlTreePrinter = struct {
     fn visitDefOpRegion(visitor: *AmlTreeVisitor, def_op_region: *const ast.DefOpRegion) void {
         const self = @fieldParentPtr(Self, "visitor", visitor);
 
-        io.printlnIndented(self.indent, "OperationRegion ({s})", .{def_op_region.name.name});
-
-        self.indent += 2;
-        // visitor.acceptDefField(def_op_region);
-        self.indent -= 2;
+        io.printIndented(self.indent, "OperationRegion ({s}, ", .{def_op_region.name.name});
+        io.print("{s}, ", .{@tagName(def_op_region.space)});
+        visitor.acceptTermArg(def_op_region.offset);
+        io.print(", ", .{});
+        visitor.acceptTermArg(def_op_region.len);
+        io.println(")", .{});
     }
 
     fn visitDefField(visitor: *AmlTreeVisitor, def_field: *const ast.DefField) void {
         const self = @fieldParentPtr(Self, "visitor", visitor);
 
-        io.printlnIndented(self.indent, "Field ({s})", .{def_field.name.name});
+        io.printIndented(self.indent, "Field ({s}, ", .{def_field.name.name});
+        io.print("{s}, ", .{@tagName(def_field.flags.access_type)});
+        io.print("{s}, ", .{@tagName(def_field.flags.lock_rule)});
+        io.println("{s}) {{", .{@tagName(def_field.flags.update_rule)});
 
         self.indent += 2;
         visitor.acceptDefField(def_field);
         self.indent -= 2;
+
+        io.printlnIndented(self.indent, "}}", .{});
     }
 
     fn visitFieldElement(visitor: *AmlTreeVisitor, field_elem: *const ast.FieldElement) void {
@@ -419,13 +415,14 @@ pub const AmlTreePrinter = struct {
     fn visitNamedField(visitor: *AmlTreeVisitor, named_fld: *const ast.NamedField) void {
         const self = @fieldParentPtr(Self, "visitor", visitor);
 
-        io.printlnIndented(self.indent, "{s}, {}", .{named_fld.name, named_fld.bits});
+        io.printlnIndented(self.indent, "{s}, {},", .{named_fld.name, named_fld.bits});
     }
 
     fn visitReservedField(visitor: *AmlTreeVisitor, reserved_fld: *const ast.ReservedField) void {
         const self = @fieldParentPtr(Self, "visitor", visitor);
 
-        io.printlnIndented(self.indent, "Reserved, {}", .{reserved_fld.len});
+        const offset = @divExact(reserved_fld.bit_offset + reserved_fld.bits, 8);
+        io.printlnIndented(self.indent, "Offset (0x{x:0>2}),", .{offset});
     }
 
     fn visitDefMethod(visitor: *AmlTreeVisitor, def_method: *const ast.DefMethod) void {
@@ -464,48 +461,59 @@ pub const AmlTreePrinter = struct {
         io.print("{s}", .{name_str.name});
     }
 
+    fn getAddressSpaceResourceType(resource_type: u8) []const u8 {
+        return switch (resource_type) {
+            0 => "Memory range",
+            1 => "I/O range",
+            2 => "Bus number range",
+            3...191 => "Reserved (invalid resource type)",
+            else => "Hardware vendor defined"
+        };
+    }
+
     fn printWordAddressSpace(self: *Self, word_space: *ast.WordAddressSpaceDesc) void {
-        _ = self;
-        _ = word_space;
-        io.print("WordSpace (...)", .{});
+        const resource_type = getAddressSpaceResourceType(word_space.resource_type);
+
+        io.println("WordSpace (", .{});
+        self.indent += 2;
+        io.printlnIndented(self.indent, "0x{x:0>2}{s}, // ResourceType ({s})", .{word_space.resource_type, " " ** 16, resource_type});
+        self.printAddressSpaceFlags(word_space.general_flags);
+        if (word_space.resource_type == 0) {
+            self.printMemoryFlags(word_space.type_flags);
+        }
+        else if (word_space.resource_type == 1) {
+            self.printIoFlags(word_space.type_flags);
+        }
+        io.printlnIndented(self.indent, "0x{x:0>10}{s: >8}, // Granularity", .{word_space.granularity, "  "});
+        io.printlnIndented(self.indent, "0x{x:0>10}{s: >8}, // AddressMinimum", .{word_space.min, "  "});
+        io.printlnIndented(self.indent, "0x{x:0>10}{s: >8}, // AddressMaximum", .{word_space.max, "  "});
+        io.printlnIndented(self.indent, "0x{x:0>10}{s: >8}, // AddressTranslation", .{word_space.translation_offset, "  "});
+        io.printlnIndented(self.indent, "0x{x:0>10}{s: >8}, // RangeLength", .{word_space.length, "  "});
+        if (word_space.res_source_index) |res_source_index| {
+            io.printlnIndented(self.indent, "0x{x:0>16}{s}, // ResourceSourceIndex", .{res_source_index, " " ** 16});
+        }
+        if (word_space.res_source) |res_source| {
+            io.printlnIndented(self.indent, "{s: <20}, // ResourceSource", .{res_source});
+        }
+        //     )                   // DescriptorName
+
+        self.indent -= 2;
+        io.printIndented(self.indent, ")", .{});
     }
 
     fn printDWordAddressSpace(self: *Self, dword_space: *ast.DWordAddressSpaceDesc) void {
         const resource_type = getAddressSpaceResourceType(dword_space.resource_type);
-        const usage = if (dword_space.general_flags.resource_usage == 0) "ResourceProducer" else "ResourceConsumer";
-        const decode = if (dword_space.general_flags.decode_type == 0) "PosDecode" else "SubDecode";
-        const mif = if (dword_space.general_flags.min_addr_fixed == 0) "MinNotFixed" else "MinFixed";
-        const maf = if (dword_space.general_flags.max_addr_fixed == 0) "MaxNotFixed" else "MaxFixed";
-        const flags_rw = if ((dword_space.type_flags & 0x01) == 0) "ReadOnly" else "ReadWrite";
-        const flags_mt = switch (@intCast(u2, dword_space.type_flags >> 1 & 0x03)) {
-            0 => "NonCacheable",
-            1 => "Cacheable",
-            2 => "WriteCombining",
-            3 => "Prefetchable",
-        };
-        const flags_mrt = switch (@intCast(u2, dword_space.type_flags >> 3 & 0x03)) {
-            0 => "AddressRangeMemory",
-            1 => "AddressRangeReserved",
-            2 => "AddressRangeACPI",
-            3 => "AddressRangeNVS",
-        };
-        const flags_tt = if (dword_space.type_flags >> 5 & 0x01 == 0) "TypeStatic" else "TypeTranslation";
 
         io.println("DWordSpace (", .{});
         self.indent += 2;
         io.printlnIndented(self.indent, "0x{x:0>2}{s}, // ResourceType ({s})", .{dword_space.resource_type, " " ** 16, resource_type});
-        // io.printlnIndented(self.indent, "// 0x{x:0>2}{s} // GeneralFlags", .{@bitCast(u8, dword_space.general_flags), " " ** 14});
-        io.printlnIndented(self.indent, "{s: <20}, //   Bit    [0] ResourceUsage", .{usage});
-        io.printlnIndented(self.indent, "{s: <20}, //   Bit    [1] Decode", .{decode});
-        io.printlnIndented(self.indent, "{s: <20}, //   Bit    [2] IsMinFixed", .{mif});
-        io.printlnIndented(self.indent, "{s: <20}, //   Bit    [3] IsMaxFixed", .{maf});
-        io.printlnIndented(self.indent, "{s: <20}  //   Bits [7:4] Reserved", .{" "});
-        io.printlnIndented(self.indent, "0x{x:0>2}{s}, // TypeSpecificFlags ({s})", .{dword_space.type_flags, " " ** 16, resource_type});
-        io.printlnIndented(self.indent, "// {s: <18} //   Bit    [0] ReadWriteType", .{flags_rw});
-        io.printlnIndented(self.indent, "// {s: <18} //   Bits [2:1] MemType", .{flags_mt});
-        io.printlnIndented(self.indent, "// {s: <18} //   Bits [4:3] MemoryRangeType", .{flags_mrt});
-        io.printlnIndented(self.indent, "// {s: <18} //   Bit    [5] TranslationType", .{flags_tt});
-        io.printlnIndented(self.indent, "{s: <20}  //   Bits [7:6] Reserved", .{" "});
+        self.printAddressSpaceFlags(dword_space.general_flags);
+        if (dword_space.resource_type == 0) {
+            self.printMemoryFlags(dword_space.type_flags);
+        }
+        else if (dword_space.resource_type == 1) {
+            self.printIoFlags(dword_space.type_flags);
+        }
         io.printlnIndented(self.indent, "0x{x:0>16}{s}, // Granularity", .{dword_space.granularity, "  "});
         io.printlnIndented(self.indent, "0x{x:0>16}{s}, // AddressMinimum", .{dword_space.min, "  "});
         io.printlnIndented(self.indent, "0x{x:0>16}{s}, // AddressMaximum", .{dword_space.max, "  "});
@@ -523,14 +531,57 @@ pub const AmlTreePrinter = struct {
         io.printIndented(self.indent, ")", .{});
     }
 
+    fn printAddressSpaceFlags(self: *Self, general_flags: ast.AddressSpaceFlags) void {
+        const usage = if (general_flags.resource_usage == 0) "ResourceProducer" else "ResourceConsumer";
+        const decode = if (general_flags.decode_type == 0) "PosDecode" else "SubDecode";
+        const mif = if (general_flags.min_addr_fixed == 0) "MinNotFixed" else "MinFixed";
+        const maf = if (general_flags.max_addr_fixed == 0) "MaxNotFixed" else "MaxFixed";
+
+        io.printlnIndented(self.indent, "{s: <20},", .{usage});
+        io.printlnIndented(self.indent, "{s: <20},", .{decode});
+        io.printlnIndented(self.indent, "{s: <20},", .{mif});
+        io.printlnIndented(self.indent, "{s: <20},", .{maf});
+    }
+
+    fn printMemoryFlags(self: *Self, mem_flags: u8) void {
+        const flags_rw = if ((mem_flags & 0x01) == 0) "ReadOnly" else "ReadWrite";
+        const flags_mt = switch (@intCast(u2, mem_flags >> 1 & 0x03)) {
+            0 => "NonCacheable",
+            1 => "Cacheable",
+            2 => "WriteCombining",
+            3 => "Prefetchable",
+        };
+        const flags_mrt = switch (@intCast(u2, mem_flags >> 3 & 0x03)) {
+            0 => "AddressRangeMemory",
+            1 => "AddressRangeReserved",
+            2 => "AddressRangeACPI",
+            3 => "AddressRangeNVS",
+        };
+        const flags_tt = if (mem_flags >> 5 & 0x01 == 0) "TypeStatic" else "TypeTranslation";
+
+        io.printlnIndented(self.indent, "0x{x:0>2}{s}, // {s}, {s}, {s}, {s}", .{mem_flags, " " ** 16, flags_rw, flags_mt, flags_mrt, flags_tt});
+    }
+
+    fn printIoFlags(self: *Self, io_flags: u8) void {
+        const range_type = switch (@intCast(u2, io_flags & 0x03)) {
+            0 => "Reserved",
+            1 => "NonISARangesOnly",
+            2 => "ISARangesOnly",
+            3 => "EntireWindow",
+        };
+        const is_translation = io_flags >> 4 & 0x01 == 1;
+        const tr_type = if (!is_translation) "TypeStatic" else "TypeTranslation";
+        const tr_sparse = if (!is_translation) "" else if (io_flags >> 5 & 0x01 == 1) ", SparseTranslation" else ", DenseTranslation";
+
+        io.printlnIndented(self.indent, "0x{x:0>2}{s}, // {s}, {s}{s}", .{io_flags, " " ** 16, range_type, tr_type, tr_sparse});
+    }
+
     fn printMemory32Fixed(self: *Self, memory32_fixed: *ast.Memory32FixedDesc) void {
         const info_rw = if (memory32_fixed.info.rw_type == .ReadOnly) "ReadOnly" else "ReadWrite";
 
         io.println("Memory32Fixed (", .{});
         self.indent += 2;
-        io.printlnIndented(self.indent, "// 0x{x:0>2}{s}  // Information", .{@bitCast(u8, memory32_fixed.info), " " ** 13});
-        io.printlnIndented(self.indent, "{s: <20}, //   Bit    [0] ReadWriteType", .{info_rw});
-        io.printlnIndented(self.indent, "{s: <20}  //   Bits [7:6] Reserved", .{" "});
+        io.printlnIndented(self.indent, "{s: <20},", .{info_rw});
         io.printlnIndented(self.indent, "0x{x:0>16}{s}, // AddressBase", .{memory32_fixed.base, "  "});
         io.printlnIndented(self.indent, "0x{x:0>16}{s}, // RangeLength", .{memory32_fixed.length, "  "});
         //     )                   // DescriptorName

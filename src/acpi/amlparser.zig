@@ -599,9 +599,32 @@ pub const NamedObj = union(enum) {
     // DefThermalZone,
 };
 
+pub const FieldFlags = packed struct {
+    access_type: enum(u4) {
+        AnyAcc,
+        ByteAcc,
+        WordAcc,
+        DWordAcc,
+        QWordAcc,
+        BufferAcc,
+        _,
+    },
+    lock_rule: enum(u1) {
+        NoLock,
+        Lock,
+    },
+    update_rule: enum(u2) {
+        Preserve,
+        WriteAsOnes,
+        WriteAsZeros,
+        _,
+    },
+    reserved: u1 = 0,
+};
+
 pub const DefField = struct {
     name: *NameString,
-    flags: u8,
+    flags: FieldFlags,
     field_elements: []FieldElement,
 };
 
@@ -616,10 +639,12 @@ pub const FieldElement = union(enum) {
 pub const NamedField = struct {
     name: NameSeg,
     bits: u32,
+    bit_offset: u32 = 0,
 };
 
 pub const ReservedField = struct {
-    len: u32,
+    bits: u32,
+    bit_offset: u32 = 0,
 };
 
 pub const NameSeg = [4]u8;
@@ -647,9 +672,23 @@ pub const DefMutex = struct {
     sync_flags: u8,
 };
 
+pub const OpRegionSpace = enum(u8) {
+    SystemMemory,
+    SystemIO,
+    PCI_Config,
+    EmbeddedControl,
+    SMBus,
+    SystemCMOS,
+    PciBarTarget,
+    IPMI,
+    GeneralPurposeIO,
+    GenericSerialBus,
+    PCC
+};
+
 pub const DefOpRegion = struct {
     name: *NameString,
-    space: u8,
+    space: OpRegionSpace,
     offset: *TermArg,
     len: *TermArg,
 };
@@ -1869,7 +1908,7 @@ pub fn AmlParser() type {
                                 var def_op_region = try self.allocator.create(DefOpRegion);
                                 def_op_region.* = DefOpRegion{
                                     .name = name_str,
-                                    .space = region_space,
+                                    .space = @intToEnum(OpRegionSpace, region_space),
                                     .offset = region_offset,
                                     .len = region_len,
                                 };
@@ -1920,14 +1959,19 @@ pub fn AmlParser() type {
                         if (self.advance()) |flags| {
                             var list = std.ArrayList(FieldElement).init(self.allocator);
 
+                            var curr_bit_offset: u32 = 0;
                             var more_fields = true;
                             while (more_fields) {
                                 if (try self.namedField()) |named_fld| {
+                                    named_fld.bit_offset = curr_bit_offset;
+                                    curr_bit_offset += named_fld.bits;
                                     try list.append(FieldElement{
                                         .named_fld = named_fld,
                                     });
                                 }
                                 else if (try self.reservedField()) |reserved_fld| {
+                                    reserved_fld.bit_offset = curr_bit_offset;
+                                    curr_bit_offset += reserved_fld.bits;
                                     try list.append(FieldElement{
                                         .reserved_fld = reserved_fld,
                                     });
@@ -1940,7 +1984,7 @@ pub fn AmlParser() type {
                             var def_field = try self.allocator.create(DefField);
                             def_field.* = DefField{
                                 .name = name_str,
-                                .flags = flags,
+                                .flags = @bitCast(FieldFlags, flags),
                                 .field_elements = list.items,
                             };
 
@@ -1961,18 +2005,19 @@ pub fn AmlParser() type {
 
             var result: ?*NamedField = null;
 
-            if (self.nameSeg()) |name_seg| {
+            if (self.nameSeg()) |name_seg|
+            if (self.pkgLength()) |field_bits| {
                 var named_fld = try self.allocator.create(NamedField);
                 named_fld.* = NamedField{
                     .name = name_seg,
-                    .bits = self.pkgLength() orelse 0,
+                    .bits = field_bits,
                 };
                 std.mem.copy(u8, named_fld.name[0..], name_seg[0..]);
                 
                 result = named_fld;
 
                 printlnIndented(self.indent, "NamedField ({s}, {})", .{named_fld.name, named_fld.bits});
-            }
+            };
 
             self.indent -= 2;
             return result;
@@ -1983,18 +2028,17 @@ pub fn AmlParser() type {
 
             var result: ?*ReservedField = null;
 
-            if (self.matchByte(0x00)) {
-                if (self.pkgLength()) |field_len| {
-                    var reserved_fld = try self.allocator.create(ReservedField);
-                    reserved_fld.* = ReservedField{
-                        .len = field_len,
-                    };
-                    
-                    result = reserved_fld;
+            if (self.matchByte(0x00))
+            if (self.pkgLength()) |field_bits| {
+                var reserved_fld = try self.allocator.create(ReservedField);
+                reserved_fld.* = ReservedField{
+                    .bits = field_bits,
+                };
+                
+                result = reserved_fld;
 
-                    printlnIndented(self.indent, "ReservedField ({})", .{field_len});
-                }
-            }
+                printlnIndented(self.indent, "ReservedField ({})", .{field_bits});
+            };
 
             self.indent -= 2;
             return result;
