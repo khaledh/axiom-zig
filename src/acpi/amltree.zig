@@ -36,6 +36,7 @@ const AmlTreeVisitor = struct {
     visitDefMethod: fn (*Self, *const ast.DefMethod) void,
     visitDefMutex: fn (*Self, *const ast.DefMutex) void,
     visitPackage: fn (*Self, *const ast.Package) void,
+    visitVarPackage: fn (*Self, *const ast.VarPackage) void,
     visitDataRefObject: fn (*Self, *const ast.DataRefObject) void,
     visitNameString: fn (*Self, *const ast.NameString) void,
 
@@ -105,6 +106,7 @@ const AmlTreeVisitor = struct {
         switch (data_obj.*) {
             .comp_data => |comp_data| self.visitComputationalData(self, comp_data),
             .package => |pkg| self.visitPackage(self, pkg),
+            .var_package => |var_pkg| self.visitVarPackage(self, var_pkg),
         }
     }
 
@@ -211,6 +213,7 @@ pub const AmlTreePrinter = struct {
                 .visitDefMethod = visitDefMethod,
                 .visitDefMutex = visitDefMutex,
                 .visitPackage = visitPackage,
+                .visitVarPackage = visitVarPackage,
                 .visitDataRefObject = visitDataRefObject,
                 .visitNameString = visitNameString,
             },
@@ -256,11 +259,13 @@ pub const AmlTreePrinter = struct {
     fn visitDefScope(visitor: *AmlTreeVisitor, def_scope: *const ast.DefScope) void {
         const self = @fieldParentPtr(Self, "visitor", visitor);
 
-        io.printlnIndented(self.indent, "Scope ({s})", .{def_scope.name.name});
+        io.printlnIndented(self.indent, "Scope ({s}) {{", .{def_scope.name.name});
 
         self.indent += 2;
         visitor.acceptDefScope(def_scope);
         self.indent -= 2;
+ 
+        io.printlnIndented(self.indent, "}}", .{});
     }
 
     fn visitDefName(visitor: *AmlTreeVisitor, def_name: *const ast.DefName) void {
@@ -347,14 +352,10 @@ pub const AmlTreePrinter = struct {
         const self = @fieldParentPtr(Self, "visitor", visitor);
         _ = visitor;
 
-        if (res_desc.len > 1) {
-            io.println("ResourceTemplate () {{", .{});
-            self.indent += 2;
-        }
+        io.println("ResourceTemplate () {{", .{});
+        self.indent += 2;
         for (res_desc) |res| {
-            if (res_desc.len > 1) {
-                io.printIndented(self.indent, "", .{});
-            }
+            io.printIndented(self.indent, "", .{});
             switch (res) {
                 .word_addr_space => |word_space| self.printWordAddressSpace(word_space),
                 .dword_addr_space => |dword_space| self.printDWordAddressSpace(dword_space),
@@ -362,24 +363,22 @@ pub const AmlTreePrinter = struct {
                 .ext_interrupt => |ext_interrupt| self.printExtendedInterrupt(ext_interrupt),
                 .io => |io_desc| self.printIo(io_desc),
             }
-            if (res_desc.len > 1) {
-                io.println("", .{});
-            }
+            io.println("", .{});
         }
-        if (res_desc.len > 1) {
-            self.indent -= 2;
-            io.printIndented(self.indent, "}}", .{});
-        }
+        self.indent -= 2;
+        io.printIndented(self.indent, "}}", .{});
     }
 
     fn visitDefDevice(visitor: *AmlTreeVisitor, def_device: *const ast.DefDevice) void {
         const self = @fieldParentPtr(Self, "visitor", visitor);
 
-        io.printlnIndented(self.indent, "Device ({s})", .{def_device.name.name});
+        io.printlnIndented(self.indent, "Device ({s}) {{", .{def_device.name.name});
 
         self.indent += 2;
         visitor.acceptDefDevice(def_device);
         self.indent -= 2;
+
+        io.printlnIndented(self.indent, "}}", .{});
     }
 
     fn visitDefOpRegion(visitor: *AmlTreeVisitor, def_op_region: *const ast.DefOpRegion) void {
@@ -442,7 +441,26 @@ pub const AmlTreePrinter = struct {
     }
 
     fn visitPackage(visitor: *AmlTreeVisitor, pkg: *const ast.Package) void {
-        io.print("[", .{});
+        io.print("Package (", .{});
+        if (pkg.n_elements != pkg.elements.len) {
+            io.print("0x{x:0>2}, ", .{pkg.n_elements});
+            io.print("0x{x:0>2}", .{pkg.elements.len});
+        }
+        io.print(") {{", .{});
+        var i: usize = 0;
+        while (i < pkg.elements.len) : (i += 1) {
+            visitor.acceptPackageElement(&pkg.elements[i]);
+            if (i < pkg.elements.len - 1) {
+                io.print(", ", .{});
+            }
+        }
+        io.print("}}", .{});
+    }
+
+    fn visitVarPackage(visitor: *AmlTreeVisitor, pkg: *const ast.VarPackage) void {
+        io.print("Package (", .{});
+        visitor.acceptTermArg(pkg.n_elements);
+        io.print(") {{", .{});
         var i: usize = 0;
         while (i < pkg.elements.len) : (i += 1) {
             visitor.acceptPackageElement(&pkg.elements[i]);

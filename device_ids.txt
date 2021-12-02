@@ -79,7 +79,7 @@ DEVICE ID RANGES
 ID range	Category
 --------  -------------
 PNP0xxx 	System devices
-PNP8xxx	Network adapters 
+PNP8xxx	    Network adapters 
 PNPAxxx 	SCSI, proprietary CD adapters 
 PNPBxxx 	Sound, video capture, multimedia
 PNPCxxx - Dxxx	Modems
@@ -96,6 +96,7 @@ PNP0802	Microsoft Sound System-compatible device
 Device ID       Description
 --------        -------------
 ***** System Devices - PNP0xxx **************************
+
 --Interrupt Controllers--
 PNP0000         AT Interrupt Controller
 PNP0001         EISA Interrupt Controller
@@ -160,8 +161,8 @@ PNP0700         PC standard floppy disk controller
 PNP0701         Standard floppy controller supporting MS Device Bay Spec
 
 --Compatibility with early device ID list--
-PNP0802         Microsoft Sound System compatible device (obsolete, use
-	   		 PNPB0xx instead)
+PNP0802         Microsoft Sound System compatible device (obsolete, use PNPB0xx instead)
+
 --Display Adapters--
 PNP0900         VGA Compatible
 PNP0901         Video Seven VRAM/VRAM II/1024i 
@@ -205,12 +206,11 @@ PNP0A04         VESA/VL Bus
 PNP0A05         Generic ACPI Bus
 PNP0A06         Generic ACPI Extended-IO Bus (EIO bus)
 
-
 -- Real Time Clock, BIOS, System board devices--
 PNP0800         AT-style speaker sound
 PNP0B00         AT Real-Time Clock
-PNP0B01		Intel PIIX4-compatible RTC/CMOS Devices
-PNP0B02		Dallas Semiconductor-compatible RTC/CMOS Devices
+PNP0B01		    Intel PIIX4-compatible RTC/CMOS Devices
+PNP0B02		    Dallas Semiconductor-compatible RTC/CMOS Devices
 
 
 PNP0C00         Plug and Play BIOS (only created by the root enumerator)
@@ -231,42 +231,42 @@ PNP0C0C         ACPI power button device
 PNP0C0D         ACPI lid device
 PNP0C0E         ACPI sleep button device
 PNP0C0F         PCI interrupt link device
-PNP0C10		ACPI system indicator device
+PNP0C10		    ACPI system indicator device
 PNP0C11         ACPI thermal zone
 PNP0C12         Device Bay Controller
-PNP0C80		Memory device
-PNP0C20 	SMI_CMD
-PNP0C21		PM1a_EVT_BLK / X_ PM1a_EVT_BLK
-PNP0C22  	PM1b_EVT_BLK / X_PM1b_EVT_BLK
-PNP0C23		PM1a_CNT_BLK / X_PM1a_CNT_BLK
-PNP0C24		PM1b_CNT_BLK / X_ PM1b_CNT_BLK
-PNP0C25		PM2_CNT_BLK / X_ PM2_CNT_BLK
-PNP0C26		PM_TMR_BLK / X_ PM_TMR_BLK
-PNP0C27		GPE0_BLK / X_GPE0_BLK
-PNP0C28		GPE1_BLK / X_ GPE1_BLK
-PNP0C30		TMKBC
-PNP0C31		TPM
-PNP0C32		HIDACPI Button Device
-PNP0C33		Microsoft-compatible H/W Error Device
-PNP0C34		Metering Device
-PNP0C34		Microsoft Virtual S3 Generic VGA Device
-PNP0C40		Windows-compatible Button Array
-PNP0C50		HID over I2C Compliant device
-PNP0C60		Convertible Laptop display sensor device
-PNP0C70		Dock sensor device
+PNP0C80		    Memory device
+PNP0C20 	    SMI_CMD
+PNP0C21		    PM1a_EVT_BLK / X_ PM1a_EVT_BLK
+PNP0C22  	    PM1b_EVT_BLK / X_PM1b_EVT_BLK
+PNP0C23		    PM1a_CNT_BLK / X_PM1a_CNT_BLK
+PNP0C24		    PM1b_CNT_BLK / X_ PM1b_CNT_BLK
+PNP0C25		    PM2_CNT_BLK / X_ PM2_CNT_BLK
+PNP0C26		    PM_TMR_BLK / X_ PM_TMR_BLK
+PNP0C27		    GPE0_BLK / X_GPE0_BLK
+PNP0C28		    GPE1_BLK / X_ GPE1_BLK
+PNP0C30		    TMKBC
+PNP0C31		    TPM
+PNP0C32		    HIDACPI Button Device
+PNP0C33		    Microsoft-compatible H/W Error Device
+PNP0C34		    Metering Device
+PNP0C34		    Microsoft Virtual S3 Generic VGA Device
+PNP0C40		    Windows-compatible Button Array
+PNP0C50		    HID over I2C Compliant device
+PNP0C60		    Convertible Laptop display sensor device
+PNP0C70		    Dock sensor device
 
 --Multifunction Controllers--
-PNP0D00		A multifunction 3.0 PC Card
+PNP0D00		    A multifunction 3.0 PC Card
 
 --Communication Bus Host Controllers --
-PNP0D10		XHCI-compliant USB Controller without Std. Debug support
-PNP0D15		XHCI-compliant USB Controller with Std. Debug support
-PNP0D20		EHCI-compliant USB Controller without Std. Debug support
-PNP0D25		EHCI-compliant USB Controller with Std. Debug support
-PNP0D40		SDA Standard Compliant SD Host Controller
+PNP0D10		    XHCI-compliant USB Controller without Std. Debug support
+PNP0D15		    XHCI-compliant USB Controller with Std. Debug support
+PNP0D20		    EHCI-compliant USB Controller without Std. Debug support
+PNP0D25		    EHCI-compliant USB Controller with Std. Debug support
+PNP0D40		    SDA Standard Compliant SD Host Controller
 
 --System Power Management Controllers--
-PNP0D80		Windows-compatible System Power Management Controller
+PNP0D80		    Windows-compatible System Power Management Controller
 
 
 --PCMCIA Controller Chipsets--
@@ -312,7 +312,7 @@ PNP0F20         Reserved by Microsoft Input Device Group
 PNP0F21         Reserved by Microsoft Input Device Group
 PNP0F22         Reserved by Microsoft Input Device Group
 PNP0F23         Reserved by Microsoft Input Device Group
-PNP0FFC		Reserved (temporarily) by Microsoft Kernel team
+PNP0FFC		    Reserved (temporarily) by Microsoft Kernel team
 PNP0FFF         Reserved by Microsoft Systems (SDA Standard Compliant SD Host Controller Vendor)
 
 ***** Network Adapters - PNP8xxx ***********************
@@ -438,7 +438,7 @@ PNP8327         IBM Token Ring (All Types)
 PNP8385         Remote Network Access Driver
 PNP8387         RNA Point-to-point Protocol Driver
 PNP8388         Reserved for Microsoft Networking components
-PNP8389		Peer IrLAN infrared driver (Microsoft-supplied)
+PNP8389		    Peer IrLAN infrared driver (Microsoft-supplied)
 
 ***** SCSI, Proprietary CD Adapters - PNPAxxx **********
 PNPA002         Future Domain 16-700 compatible controller
@@ -494,6 +494,7 @@ DEVICE TYPE CODES
 -----------------------------------------------------------------------
 	
 Base Type = 0: Reserved
+
 Base Type = 1: Mass Storage Device
 	Sub-Type = 0: SCSI Controller
 	Sub-Type = 1: IDE Controller (Standard ATA compatible)
@@ -503,6 +504,7 @@ Base Type = 1: Mass Storage Device
 	Sub-Type = 3: IPI Controller
 		Interface Type = 0: General IPI
 	Sub-Type = 80h: Other Mass Storage Controller
+
 Base Type = 2: Network Interface Controller
 	Sub-Type = 0: Ethernet
 		Interface Type = 0: General Ethernet
@@ -519,12 +521,14 @@ Base Type = 3: Display Controller
 	Sub-Type = 1: XGA Compatible Controller
 		Interface Type = 0: General XGA Compatible Controller
 	Sub-Type = 80h: Other Display Controller
+
 Base Type = 4: Multi-media Controller
 	Sub-Type = 0: Video Controller
 		Interface Type = 0: General Video
 	Sub-Type = 1: Audio Controller
 		Interface Type = 0: General Audio Controller
 	Sub-Type = 80h: Other Multi-media Controller
+
 Base Type = 5: Memory 
 	Sub-Type = 0: RAM 
 		Interface Type = 0: General RAM
@@ -546,6 +550,7 @@ Base Type = 6: Bridge Controller
 	Sub-Type = 5: PCMCIA Bridge
 		Interface Type = 0: General PCMCIA Bridge
 	Sub-Type = 80h: Other Bridge Device
+
 Base Type = 7: Communications Device
 	Sub-Type = 0: RS-232 Device (XT-compatible COM)
 		Interface Type = 0: Generic XT-compatible
@@ -556,6 +561,7 @@ Base Type = 7: Communications Device
 		Interface Type = 1: Model-30 Bidirectional Port
 		Interface Type = 2: ECP 1.? compliant port
 	Sub-Type = 80h: Other Communications Device
+
 Base Type = 8: System Peripherals
 	Sub-Type = 0: Programmable Interrupt Controller (8259 Compatible)
 		Interface Type = 0: Generic 8259 PIC
@@ -573,8 +579,7 @@ Base Type = 8: System Peripherals
 		Interface Type = 0: Generic RTC Controller
 		Interface Type = 1: ISA RTC Controller
 	Sub-Type = 80h: Other System Peripheral                                 
-		
-	
+
 Base Type = 9: Input Devices
 	Sub-Type = 0: Keyboard Controller
 		Interface Type = 0: Not applicable
@@ -583,10 +588,12 @@ Base Type = 9: Input Devices
 	Sub-Type = 2: Mouse Controller
 		Interface Type = 0: Not applicable
 	Sub-Type = 80h: Other Input Controller
+
 Base Type = 0Ah: Docking Station
 	Sub-Type = 0: Generic Docking Station
 		Interface Type = 0: Not applicable
 	Sub-Type = 80h: Other type of Docking Station
+
 Base Type = 0Bh: CPU Type
 	Sub-Type = 0: 386-based processor
 		Interface Type = 0: Not applicable

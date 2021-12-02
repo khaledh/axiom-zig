@@ -237,7 +237,7 @@ pub const ExpressionOpcode = union(enum) {
     // DefObjectType,
     or_: *Or,
     package: *Package,
-    // DefVarPackage,
+    var_package: *VarPackage,
     ref_of: *RefOf,
     shift_left: *ShiftLeft,
     shift_right: *ShiftRight,
@@ -468,6 +468,11 @@ pub const And = struct {
 
 pub const Package = struct {
     n_elements: u8,
+    elements: []PackageElement,
+};
+
+pub const VarPackage = struct {
+    n_elements: *TermArg,
     elements: []PackageElement,
 };
 
@@ -713,7 +718,7 @@ pub const TermArg = union(enum) {
 pub const DataObject = union(enum) {
     comp_data: *ComputationalData,
     package: *Package,
-    // DefVarPackage,
+    var_package: *VarPackage,
 };
 
 pub const ArgObj = enum(u8) {
@@ -1398,6 +1403,14 @@ pub fn AmlParser() type {
 
                 result = expr_opcode;
             }
+            else if (try self.varPackage()) |var_pkg| {
+                var expr_opcode = try self.allocator.create(ExpressionOpcode);
+                expr_opcode.* = ExpressionOpcode{
+                    .var_package = var_pkg,
+                };
+
+                result = expr_opcode;
+            }
             else if (self.matchOpCodeByte(.RefOfOp)) {
                 printlnIndented(self.indent, "RefOf()", .{});
                 if (try self.superName()) |source| {
@@ -1884,12 +1897,6 @@ pub fn AmlParser() type {
                 };
                 result = named_obj;
             }
-                // defBankField() or
-                // defCreateBitField() or defCreateByteField() or defCreateDWordField() or
-                // defCreateField() or defCreateQWordField() or defCreateWordField() or
-                // defDataRegion or defDevice() or DefEvent() or defExternal() or
-                // defField() or defIndexField() or defMethod() or defMutex() or
-                // defOpRegion() or defPowerRes() or defThermalZone();
 
             return result;
         }
@@ -1899,51 +1906,26 @@ pub fn AmlParser() type {
 
             var result: ?*DefOpRegion = null;
 
-            if (self.matchOpCodeWord(.OpRegionOp)) {
-                if (try self.nameString()) |name_str| {
-                    if (self.advance()) |region_space| {
-                        if (try self.termArg()) |region_offset| {
-                            if (try self.termArg()) |region_len| {
-                                printlnIndented(self.indent, "OperationRegion ({s})", .{name_str.name});
-                                var def_op_region = try self.allocator.create(DefOpRegion);
-                                def_op_region.* = DefOpRegion{
-                                    .name = name_str,
-                                    .space = @intToEnum(OpRegionSpace, region_space),
-                                    .offset = region_offset,
-                                    .len = region_len,
-                                };
-                                result = def_op_region;
+            if (self.matchOpCodeWord(.OpRegionOp))
+            if (try self.nameString()) |name_str|
+            if (self.advance()) |region_space|
+            if (try self.termArg()) |region_offset|
+            if (try self.termArg()) |region_len| {
+                printlnIndented(self.indent, "OperationRegion ({s})", .{name_str.name});
+                var def_op_region = try self.allocator.create(DefOpRegion);
+                def_op_region.* = DefOpRegion{
+                    .name = name_str,
+                    .space = @intToEnum(OpRegionSpace, region_space),
+                    .offset = region_offset,
+                    .len = region_len,
+                };
+                result = def_op_region;
 
-                            }
-                        }
-                    }
-                }
-            }
+            };
 
             self.indent -= 2;
             return result;
         }
-
-        // fn regionSpace(self: *Self) bool {
-        //     // printlnIndented(self.indent, @src().fn_name, .{});
-        //     // TODO: read ByteData
-        //     // ByteData
-        //     //   0x00 SystemMemory
-        //     //   0x01 SystemIO
-        //     //   0x02 PCI_Config
-        //     //   0x03 EmbeddedControl
-        //     //   0x04 SMBus
-        //     //   0x05 System CMOS
-        //     //   0x06 PciBarTarget
-        //     //   0x07 IPMI
-        //     //   0x08 GeneralPurposeIO
-        //     //   0x09 GenericSerialBus
-        //     //   0x0A PCC
-        //     //   0x80-0xFF: OEM Defined
-
-        //     _ = self.advance();
-        //     return true;
-        // }
 
         fn defField(self: *Self) !?*DefField {
             self.indent += 2;
@@ -1955,8 +1937,8 @@ pub fn AmlParser() type {
                     try self.enterContext(payload.len);
 
                     if (try self.nameString()) |name_str| {
-                        printlnIndented(self.indent, "Field ({s})", .{name_str.name});
                         if (self.advance()) |flags| {
+                            printlnIndented(self.indent, "Field ({s})", .{name_str.name});
                             var list = std.ArrayList(FieldElement).init(self.allocator);
 
                             var curr_bit_offset: u32 = 0;
@@ -1991,7 +1973,6 @@ pub fn AmlParser() type {
                             result = def_field;
                         }
                     }
-
                     self.exitContext();
                 }
             }
@@ -2084,30 +2065,29 @@ pub fn AmlParser() type {
 
             var result: ?*DefDevice = null;
 
-            if (self.matchOpCodeWord(.DeviceOp)) {
-                if (self.pkgPayload()) |payload| {
-                    try self.enterContext(payload.len);
-                    {
-                        if (try self.nameString()) |name_str| {
-                            printlnIndented(self.indent, "Device ({s})", .{name_str.name});
-                            var def_device = try self.allocator.create(DefDevice);
-                            def_device.* = DefDevice{
-                                .name = name_str,
-                                .terms = undefined,
-                            };
-                            result = def_device;
+            if (self.matchOpCodeWord(.DeviceOp))
+            if (self.pkgPayload()) |payload| {
+                try self.enterContext(payload.len);
+                {
+                    if (try self.nameString()) |name_str| {
+                        printlnIndented(self.indent, "Device ({s})", .{name_str.name});
+                        var def_device = try self.allocator.create(DefDevice);
+                        def_device.* = DefDevice{
+                            .name = name_str,
+                            .terms = undefined,
+                        };
+                        result = def_device;
 
-                            const ns_path = try self.ns_builder.addName(name_str.name, NamespaceObject{ .device = def_device });
-                            try self.ns_builder.pushNamespace(ns_path);
+                        const ns_path = try self.ns_builder.addName(name_str.name, NamespaceObject{ .device = def_device });
+                        try self.ns_builder.pushNamespace(ns_path);
 
-                            def_device.terms = try self.terms(0);
+                        def_device.terms = try self.terms(0);
 
-                            _ = self.ns_builder.popNamespace();
-                        }
+                        _ = self.ns_builder.popNamespace();
                     }
-                    self.exitContext();
                 }
-            }
+                self.exitContext();
+            };
 
             self.indent -= 2;
             return result;
@@ -2118,19 +2098,17 @@ pub fn AmlParser() type {
 
             var result: ?*DefMutex = null;
 
-            if (self.matchOpCodeWord(.MutexOp)) {
-                if (try self.nameString()) |name_str| {
-                    if (self.advance()) |sync_flags| {
-                        printlnIndented(self.indent, "Mutex ({s})", .{name_str.name});
-                        var def_mutex = try self.allocator.create(DefMutex);
-                        def_mutex.* = DefMutex{
-                            .name = name_str,
-                            .sync_flags = sync_flags,
-                        };
-                        result = def_mutex;
-                    }
-                }
-            }
+            if (self.matchOpCodeWord(.MutexOp))
+            if (try self.nameString()) |name_str|
+            if (self.advance()) |sync_flags| {
+                printlnIndented(self.indent, "Mutex ({s})", .{name_str.name});
+                var def_mutex = try self.allocator.create(DefMutex);
+                def_mutex.* = DefMutex{
+                    .name = name_str,
+                    .sync_flags = sync_flags,
+                };
+                result = def_mutex;
+            };
 
             self.indent -= 2;
             return result;
@@ -2141,22 +2119,19 @@ pub fn AmlParser() type {
 
             var result: ?*DefCreateDWordField = null;
 
-            if (self.matchOpCodeByte(.CreateDWordFieldOp)) {
-                if (try self.termArg()) |source_buff| {
-                    if (try self.termArg()) |byte_index| {
-                        if (try self.nameString()) |name_str| {
-                            printlnIndented(self.indent, "CreateDWordField ({s})", .{name_str.name});
-                            var def_create_dword_field = try self.allocator.create(DefCreateDWordField);
-                            def_create_dword_field.* = DefCreateDWordField{
-                                .source_buff = source_buff,
-                                .byte_index = byte_index,
-                                .field_name = name_str,
-                            };
-                            result = def_create_dword_field;
-                        }
-                    }
-                }
-            }
+            if (self.matchOpCodeByte(.CreateDWordFieldOp))
+            if (try self.termArg()) |source_buff|
+            if (try self.termArg()) |byte_index|
+            if (try self.nameString()) |name_str| {
+                printlnIndented(self.indent, "CreateDWordField ({s})", .{name_str.name});
+                var def_create_dword_field = try self.allocator.create(DefCreateDWordField);
+                def_create_dword_field.* = DefCreateDWordField{
+                    .source_buff = source_buff,
+                    .byte_index = byte_index,
+                    .field_name = name_str,
+                };
+                result = def_create_dword_field;
+            };
 
             self.indent -= 2;
             return result;
@@ -2257,14 +2232,42 @@ pub fn AmlParser() type {
                 {
                     if (self.advance()) |n_elements| {
                         var list = std.ArrayList(PackageElement).init(self.allocator);
-                        var i: usize = 0;
-                        while (i < n_elements) : (i += 1) {
-                            if (try self.packageElement()) |pkg_elem| {
-                                try list.append(pkg_elem.*);
-                            }
+                        while (try self.packageElement()) |pkg_elem| {
+                            try list.append(pkg_elem.*);
                         }
                         var pkg = try self.allocator.create(Package);
                         pkg.* = Package{
+                            .n_elements = n_elements,
+                            .elements = list.items,
+                        };
+
+                        result = pkg;
+                    }
+                }
+                self.exitContext();
+            };
+
+            self.indent -= 2;
+            return result;
+        }
+
+        fn varPackage(self: *Self) !?*VarPackage {
+            self.indent += 2;
+
+            var result: ?*VarPackage = null;
+
+            if (self.matchOpCodeByte(.VarPackageOp))
+            if (self.pkgPayload()) |payload| {
+                printlnIndented(self.indent, "VarPackage()", .{});
+                try self.enterContext(payload.len);
+                {
+                    if (try self.termArg()) |n_elements| {
+                        var list = std.ArrayList(PackageElement).init(self.allocator);
+                        while (try self.packageElement()) |pkg_elem| {
+                            try list.append(pkg_elem.*);
+                        }
+                        var pkg = try self.allocator.create(VarPackage);
+                        pkg.* = VarPackage{
                             .n_elements = n_elements,
                             .elements = list.items,
                         };
@@ -2300,7 +2303,6 @@ pub fn AmlParser() type {
             return result;
         }
 
-
         fn buffer(self: *Self) !?*Buffer {
             self.indent += 2;
 
@@ -2319,7 +2321,7 @@ pub fn AmlParser() type {
                         ) {
                             try self.enterContext(len);
                             {
-                                print("Buffer() <ResourceDescriptor>", .{});
+                                printlnIndented(self.indent, "Buffer() <ResourceDescriptor>", .{});
                                 var list = std.ArrayList(ResourceDescriptor).init(self.allocator);
                                 while (try self.resourceDescriptor()) |res_desc| {
                                     try list.append(res_desc.*);
@@ -2404,7 +2406,7 @@ pub fn AmlParser() type {
                     result = res_desc;
                 };
             }
-            if (self.matchByte(@enumToInt(LargeResourceItemTag.dword_addr_space))) {
+            else if (self.matchByte(@enumToInt(LargeResourceItemTag.dword_addr_space))) {
                 if (self.readWord()) |desc_len|
                 if (self.readByte()) |res_type|
                 if (self.readByte()) |general_flags|
@@ -2539,10 +2541,13 @@ pub fn AmlParser() type {
                 };
                 result = data_obj;
             }
-            // const result =
-            //     computationalData();
-            //     defPackage() or
-            //     defVarPackage();
+            else if (try self.varPackage()) |var_pkg| {
+                var data_obj = try self.allocator.create(DataObject);
+                data_obj.* = DataObject{
+                    .var_package = var_pkg,
+                };
+                result = data_obj;
+            }
 
             return result;
         }
@@ -2815,7 +2820,7 @@ pub fn AmlParser() type {
         fn pkgPayload(self: *Self) ?[]const u8 {
             const pkg_start = self.ctx.loc;
             if (self.matchPkgLength()) |pkg_len| {
-                if (pkg_start + pkg_len < self.ctx.block.len) {
+                if (pkg_start + pkg_len <= self.ctx.block.len) {
                     return self.ctx.block[self.ctx.loc..(pkg_start + pkg_len)];
                 }
             }
@@ -2901,15 +2906,12 @@ pub fn AmlParser() type {
         fn nameSeg(self: *Self) ?[4]u8 {
             var result: ?[4]u8 = null;
 
-            if (self.leadNameChar()) |ch1| {
-                if (self.nameChar()) |ch2| {
-                    if (self.nameChar()) |ch3| {
-                        if (self.nameChar()) |ch4| {
-                            result = [_]u8{ ch1, ch2, ch3, ch4 };
-                        }
-                    }
-                }
-            }
+            if (self.leadNameChar()) |ch1|
+            if (self.nameChar()) |ch2|
+            if (self.nameChar()) |ch3|
+            if (self.nameChar()) |ch4| {
+                result = [_]u8{ ch1, ch2, ch3, ch4 };
+            };
 
             return result;
         }
@@ -2953,13 +2955,11 @@ pub fn AmlParser() type {
         fn dualNamePath(self: *Self) !?[]const u8 {
             var result: ?[]const u8 = null;
 
-            if (self.matchPrefix(.DualNamePrefix)) {
-                if (self.nameSeg()) |seg1| {
-                    if (self.nameSeg()) |seg2| {
-                        result = try std.mem.concat(self.allocator, u8, &[_][]const u8{ seg1[0..], ".", seg2[0..] });
-                    }
-                }
-            }
+            if (self.matchPrefix(.DualNamePrefix))
+            if (self.nameSeg()) |seg1|
+            if (self.nameSeg()) |seg2| {
+                result = try std.mem.concat(self.allocator, u8, &[_][]const u8{ seg1[0..], ".", seg2[0..] });
+            };
 
             return result;
         }
@@ -2967,20 +2967,19 @@ pub fn AmlParser() type {
         fn multiNamePath(self: *Self) !?[]const u8 {
             var result: ?[]const u8 = null;
 
-            if (self.matchPrefix(.MultiNamePrefix)) {
-                if (self.advance()) |seg_count| {
-                    var list = std.ArrayList([]const u8).init(self.allocator);
-                    var i: usize = 0;
-                    while (i < seg_count) : (i += 1) {
-                        if (self.nameSeg()) |seg| {
-                            try list.append(try std.mem.dupe(self.allocator, u8, seg[0..]));
-                        } else {
-                            return null;
-                        }
+            if (self.matchPrefix(.MultiNamePrefix))
+            if (self.advance()) |seg_count| {
+                var list = std.ArrayList([]const u8).init(self.allocator);
+                var i: usize = 0;
+                while (i < seg_count) : (i += 1) {
+                    if (self.nameSeg()) |seg| {
+                        try list.append(try std.mem.dupe(self.allocator, u8, seg[0..]));
+                    } else {
+                        return null;
                     }
-                    result = try std.mem.join(self.allocator, ".", list.items);
                 }
-            }
+                result = try std.mem.join(self.allocator, ".", list.items);
+            };
 
             return result;
         }
