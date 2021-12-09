@@ -1,3 +1,7 @@
+const io = @import("../io.zig");
+const print = io.print;
+const println = io.println;
+
 // Root System Description Pointer
 pub const RSDP = extern struct {
     signature: [8]u8,
@@ -175,3 +179,15 @@ pub const BGRT = extern struct {
     image_offset_x: u32,
     image_offset_y: u32,
 };
+
+fn printTableDescHeader(hdr: *const TableDescriptionHeader) void {
+    println("  | Signature:        \"{s}\"", .{hdr.signature});
+    println("  | Length:           {}", .{hdr.length});
+    println("  | Revision:         {}", .{hdr.revision});
+    println("  | Checksum:         {}", .{hdr.checksum});
+    println("  | OEM ID:           \"{s}\"", .{hdr.oem_id});
+    println("  | OEM Table ID:     \"{s}\"", .{hdr.oem_table_id});
+    println("  | OEM REvision:     {}", .{hdr.oem_revision});
+    println("  | Creator ID:       \"{s}\"", .{hdr.creator_id});
+    println("  | Creator Revision: 0x{x}", .{hdr.creator_revision});
+}
