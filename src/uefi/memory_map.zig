@@ -3,11 +3,12 @@ const fmt = std.fmt;
 const uefi = std.os.uefi;
 const MemoryDescriptor = uefi.tables.MemoryDescriptor;
 const MemoryType = uefi.tables.MemoryType;
+
 const io = @import("../io.zig");
 const print = io.print;
 const println = io.println;
 
-pub fn getMemoryMap(bs: *uefi.tables.BootServices) void {
+pub fn dumpUefiMemoryMap(bs: *uefi.tables.BootServices) void {
     var memory_map_size: usize = 0;
     var memory_map: [*]MemoryDescriptor = undefined;
     var memory_map_key: usize = undefined;
@@ -38,13 +39,37 @@ pub fn getMemoryMap(bs: *uefi.tables.BootServices) void {
 
     var i: usize = 0;
     var max_memory: usize = 0;
+    var usable_memory: usize = 0;
+    var physical_memory: usize = 0;
+    var previous_end: usize = 0;
     while (i < n_descriptors) : (i += 1) {
         const desc = @intToPtr(*MemoryDescriptor, @ptrToInt(memory_map) + i * descriptor_size);
         const size_kb: usize = desc.number_of_pages * 4;
+
+        if (previous_end != desc.physical_start) {
+            println("gap found", .{});            
+        }
+        previous_end = desc.physical_start + size_kb * 1024;
+
         if (desc.physical_start + size_kb * 1024 > max_memory) {
             max_memory = desc.physical_start + size_kb * 1024;
         }
-        // println("{:03}: [{X: >16}] [{: >8} KB] {s}", .{i, desc.physical_start, size_kb, @tagName(desc.type)});
+        switch (desc.type) {
+            .LoaderCode,
+            .LoaderData,
+            .BootServicesCode,
+            .BootServicesData,
+            .ConventionalMemory,
+            .ACPIReclaimMemory,
+                => usable_memory += desc.number_of_pages * 4 * 1024,
+            else => {},
+        }
+        if (@bitCast(u64, desc.attribute) & 0xF == 0xF) {
+            physical_memory += desc.number_of_pages * 4 * 1024;
+        }
+        print("{:03}: [{X: >16}] [{: >8} KB] {s}", .{i, desc.physical_start, size_kb, @tagName(desc.type)});
+        println("[0x{x:0>16}]", .{@bitCast(u64, desc.attribute)});
     }
-    println("  Total Memory: {s}", .{fmt.fmtIntSizeBin(max_memory)});
+    println("  Total Memory: {s}", .{fmt.fmtIntSizeBin(physical_memory)});
+    // println("  Total Usable Memory: {s}", .{fmt.fmtIntSizeBin(usable_memory)});
 }

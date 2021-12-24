@@ -976,7 +976,7 @@ pub fn AmlParser() type {
                 println("error: {}", .{err});
                 return;
             };
-            _ = term_list;
+            // _ = term_list;
 
             // println("\n\n### Namespace\n", .{});
             // self.ns_builder.print();

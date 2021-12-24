@@ -1,16 +1,15 @@
 const acpi = @import("acpi.zig");
-const aml = @import("acpi/amlparser.zig");
-const io = @import("io.zig");
+const aml = @import("amlparser.zig");
+const io = @import("../io.zig");
 const print = io.print;
 const println = io.println;
 
-pub fn dumpDsdt(dsdt: acpi.DSDT) void {
+pub fn dumpDsdt(dsdt: *const acpi.TableDescriptionHeader) void {
     println("", .{});
     println("  ### DSDT (Differentiated System Description Table) ###", .{});
     println("", .{});
 
-    const dsdt = @ptrCast(*const acpi.TableDescriptionHeader, @intToPtr([*]align(4) const u8, fadt.dsdt & 0x00000000ffffffff));
-    printTableDescHeader(@ptrCast(*const acpi.TableDescriptionHeader, dsdt));
+    acpi.printTableDescHeader(dsdt);
     const aml_block_len = dsdt.length - 36;
     println("  - Definition Block: {} bytes (AML encoded)", .{aml_block_len});
 

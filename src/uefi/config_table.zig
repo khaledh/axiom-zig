@@ -1,22 +1,27 @@
 const std = @import("std");
 const uefi = std.os.uefi;
+const SystemTable = uefi.tables.SystemTable;
+const ConfigurationTable = uefi.tables.ConfigurationTable;
+
 const acpi = @import("../acpi/acpi.zig");
 const io = @import("../io.zig");
 const print = io.print;
 const println = io.println;
 const printGuid = io.printGuid;
 
-// pub const Uefi
+pub fn dumpUefiConfigurationTable(st: *SystemTable) void {
+    dumpConfigTableNames(st);
+}
 
-pub fn dumpConfigTableNames(st: *uefi.tables.SystemTable) void {
+pub fn dumpConfigTableNames(st: *SystemTable) void {
     println("", .{});
-    println("UEFI Configuration Tables [{}]", .{st.number_of_table_entries});
+    println("UEFI Configuration Table [{}]", .{st.number_of_table_entries});
 
     var rdsp: *align(1) acpi.RSDP = undefined;
 
     var i: usize = 0;
     while (i < st.number_of_table_entries) : (i += 1) {
-        const CT = uefi.tables.ConfigurationTable;
+        const CT = ConfigurationTable;
         const guid = st.configuration_table[i].vendor_guid;
 
         const name: []const u8 =
@@ -52,4 +57,17 @@ pub fn dumpConfigTableNames(st: *uefi.tables.SystemTable) void {
             rdsp = @ptrCast(*align(1) acpi.RSDP, st.configuration_table[i].vendor_table);
         }
     }
+}
+
+pub fn getConfigurationTable(st: *SystemTable, guid: uefi.Guid) ?*ConfigurationTable {
+    var table: ?*ConfigurationTable = null;
+
+    var i: usize = 0;
+    while (i < st.number_of_table_entries) : (i += 1) {
+        if (guid.eql(st.configuration_table[i].vendor_guid)) {
+            table = &st.configuration_table[i];
+        }
+    }
+
+    return table;
 }

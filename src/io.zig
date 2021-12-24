@@ -30,6 +30,12 @@ pub fn printlnIndented(indent: usize, comptime format: [:0]const u8, args: anyty
     printIndented(indent, format ++ "\r\n", args);
 }
 
+// UCS-2
+pub fn print16(str: [*:0]const u16) void {
+    const con_out = uefi.system_table.con_out.?;
+    _ = con_out.outputString(str);
+}
+
 pub fn printGuid(guid: uefi.Guid) void {
     print("{x:0>8}-{x:0>4}-{X:0>4}-{X:0>2}{X:0>2}-{s:0>12}", .{
         guid.time_low,
