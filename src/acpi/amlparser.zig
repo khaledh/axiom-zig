@@ -773,7 +773,7 @@ fn NamespaceBuilder() type {
     // };
 
     return struct {
-        alloc: *std.mem.Allocator,
+        alloc: std.mem.Allocator,
         stack: std.ArrayList([]const u8),
         names: std.StringHashMap(NamespaceObject),
 
@@ -787,7 +787,7 @@ fn NamespaceBuilder() type {
             .terms = &.{},
         };
 
-        pub fn init(alloc: *std.mem.Allocator) Self {
+        pub fn init(alloc: std.mem.Allocator) Self {
             var self = Self{
                 .alloc = alloc,
                 .stack = std.ArrayList([]const u8).init(alloc),
@@ -930,7 +930,7 @@ pub fn AmlParser() type {
         var buf: [1024 * 1024]u8 = undefined;
         var fba = std.heap.FixedBufferAllocator.init(&buf);
 
-        allocator: *std.mem.Allocator,
+        allocator: std.mem.Allocator,
         ns_builder: NamespaceBuilder(),
         ctx_stack: std.ArrayList(ParseContext),
         ctx: ParseContext,
@@ -938,9 +938,9 @@ pub fn AmlParser() type {
 
         pub fn init() Self {
             return .{
-                .allocator = &fba.allocator,
-                .ns_builder = NamespaceBuilder().init(&fba.allocator),
-                .ctx_stack = std.ArrayList(ParseContext).init(&fba.allocator),
+                .allocator = fba.allocator(),
+                .ns_builder = NamespaceBuilder().init(fba.allocator()),
+                .ctx_stack = std.ArrayList(ParseContext).init(fba.allocator()),
                 .ctx = undefined,
                 .indent = 0,
             };
@@ -2973,7 +2973,7 @@ pub fn AmlParser() type {
                 var i: usize = 0;
                 while (i < seg_count) : (i += 1) {
                     if (self.nameSeg()) |seg| {
-                        try list.append(try std.mem.dupe(self.allocator, u8, seg[0..]));
+                        try list.append(try self.allocator.dupe(u8, seg[0..]));
                     } else {
                         return null;
                     }

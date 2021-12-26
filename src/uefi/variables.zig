@@ -214,7 +214,7 @@ fn varnameEql(a: [256:0]u16, comptime b: []const u8) bool {
 pub fn devicePathToText(device_path: *const uefi.protocols.DevicePathProtocol) [*:0]const u16 {
     const st = uefi.system_table;
 
-    var dev_path_to_text: ?*c_void = null;
+    var dev_path_to_text: ?*anyopaque = null;
     _ = st.boot_services.?.locateProtocol(@alignCast(8, &UefiGuid.EFI_DEVICE_PATH_TO_TEXT_PROTOCOL), null, &dev_path_to_text);
     const dptt = @ptrCast(*align(1) const DevicePathToTextProtocol, dev_path_to_text.?);
     return dptt.convertDevicePathToText(device_path, false, true);

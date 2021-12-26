@@ -9,7 +9,7 @@ fn dumpUefiHandleProtocols(bs: *uefi.tables.BootServices) void {
     const st = uefi.system_table;
     const con_out = st.con_out.?;
 
-    var dev_path_to_text: ?*c_void = null;
+    var dev_path_to_text: ?*anyopaque = null;
     _ = bs.locateProtocol(@alignCast(8, &UefiGuid.EFI_DEVICE_PATH_TO_TEXT_PROTOCOL), null, &dev_path_to_text);
     const dptt = @ptrCast(*align(1) const DevicePathToTextProtocol, dev_path_to_text.?);
 
@@ -48,14 +48,14 @@ fn dumpUefiHandleProtocols(bs: *uefi.tables.BootServices) void {
             if (proto_guids[j].eql(UefiGuid.EFI_DEVICE_PATH_PROTOCOL) or
                 proto_guids[j].eql(UefiGuid.EFI_LOADED_IMAGE_DEVICE_PATH_PROTOCOL))
             {
-                var dev_path_i: ?*c_void = undefined;
+                var dev_path_i: ?*anyopaque = undefined;
                 _ = bs.openProtocol(handles[i], proto_guids[j], &dev_path_i, uefi.handle, null, .{ .get_protocol = true });
                 var dev_path = @ptrCast(*align(1) uefi.protocols.DevicePathProtocol, dev_path_i);
                 const dev_path_text = dptt.convertDevicePathToText(dev_path, true, true);
                 io.print("    ", .{});
                 _ = con_out.outputString(dev_path_text);
             } else if (proto_guids[j].eql(UefiGuid.EFI_COMPONENT_NAME2_PROTOCOL)) {
-                var comp_name_i: ?*c_void = undefined;
+                var comp_name_i: ?*anyopaque = undefined;
                 _ = bs.openProtocol(handles[i], proto_guids[j], &comp_name_i, uefi.handle, null, .{ .get_protocol = true });
                 var comp_name = @ptrCast(*align(1) CompnentName2Protocol, comp_name_i);
                 var comp_name_text: [*:0]const u16 = undefined;
